@@ -10,7 +10,7 @@ class BikeStyle(object):
 #SUB SelectBike
 #==============================================================================
 # TODO make this its own game state (I think). It belongs either at the end of the MainMenu state, or as its own state, or at the beginning of Playing (probably its own state)
-def SelectBike:
+def SelectBike():
     CLS
     ang = 0
     Tzf = 0: Tzh = Tzf

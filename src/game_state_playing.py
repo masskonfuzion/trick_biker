@@ -1,5 +1,43 @@
+from pymkfgame.core.message_queue import MessageQueue
+from pymkfgame.display_msg.display_msg import DisplayMessage
+from pymkfgame.display_msg.display_msg_manager import DisplayMessageManager
+from pymkfgame.core.game_state_base import GameStateBase
+
+from bike2_core import *
+
 #==============================================================================
+class KeyboardStateManager(object):
+    ''' Super-simple class to store keyboard state.
+
+        Could be way more feature-packed or robust...
+    '''
+    def __init__(self):
+        self.trickModifierKeys = [pygame.K_RSHIFT, pygame.K_LSHIFT]
+        self.trickModifier = False      # Maybe future work could develop this class better; I just wanted to get something simple working
+
+class PlayingSubstate(object):
+    """ This class implements an enum that allows the Playing state to keep track of its sub-states (e.g. Load level; playing; player crashed; game over; etc. """
+    uninitialized = -1
+    startlevel = 0
+    playing = 1
+    crashed = 2
+    resetlevel = 3
+    finishlevel = 4
+    gameover = 5
+
+    # NOTE: haven't decided whether I want to have this class simply be an enum, or an actual object, with methods and such
+    #def __init__:
+    #    self.value = PlayingSubstate.uninitialized
+
+    #def set(self, newState):
+    #    self.value = newState
+
+    #def get(self):
+    #    return self.value
+
+
 class GameplayStats(object):
+    
     def __init__(self):
         # TODO consider all your notes and such; movidy the stuff
         # In-game stats
@@ -14,9 +52,41 @@ class GameplayStats(object):
         self.doRunSummary = True    # TODO: Remove; shouldn't be optional... Always do the run summary...
         self.crowdOn = False
         self.sloMo = False
+        # NOTE: the currentLevel is stored in the LevelManager.
+
+        # Trick-related info
+        self.numTricks = 0          # Num of tricks in a trick combo (resets to 0 upon landing; perhaps name this better?)
+        self.addScore = 0           # Used to keep track of the added-up score of tricks in a combo (resets once the trick is landed.. or crashed...)
+        self.trickArraySize = 16
+        self.trickPointValue = [ 100, 150, 125, 150, 250, 350, 200, 175, 200, 300, 330, 375, 75, 200, 100, 275 ]   # Point values of tricks (e.g. 0th item in array is the point value for Trick #1)
+        self.timesUsed = []
+        self.trickCounter = 0       # This appears to be an index for the # of tricks performed in a level, for run-report purposes (e.g. a 5-trick combo counts as 1 trickCounter, for the run report.. if that makes sense)
+        self.resetTrickCounters()
+        self.activeTrick = 0        # Note: to be consistent the QBASIC version, we'll make activeTrick go from 1 - whatever # of tricks we want. 0 means no active trick
+        self.trickMsg = ""          # Message to display while tricking (e.g. prints out the trick combo as you're performing it)
+
+        # End-of-level summary
+        self.runReport = []
+        self.resetRunReport()
+        # TODO make sure to use your resetXYZ helper functions when starting/restarting levels
 
         # Possibly used for debugging
         self.drawPoints = False
+
+        # Misc
+        self.factor = .25   # TODO figure out the purpose of this var.. it's in the original QBASIC code as a hard-coded const
+
+    def resetTrickCounters(self):
+        # TODO perhaps also add other stuff into this function, e.g. addScore, numTricks, trickCounter, etc
+        if self.timesUsed:  # if list exists already, zero it out
+            for i in range(0, self.trickArraySize):
+                self.timesUsed[i] = 0
+        else:               # if this is the first-time use, then create the list
+            for i in range(0, self.trickArraySize):
+                self.timesUsed.append(0)
+
+    def resetRunReport(self):
+        del self.runReport[:]   # Clear out the run report for a new level
 
     def loadTrophies(self):
         ## TODO convert file i/o to Python
@@ -26,22 +96,24 @@ class GameplayStats(object):
         #OPEN "trophies.dat" FOR INPUT AS #1
         #    FOR n = 1 TO 13
         #        INPUT #1, Temp$
-        #        NumTrophies(n) = VAL(CHR$(ASC(Temp$) - 128))
+        #        self.numTrophies[n] = VAL(CHR$(ASC(Temp$) - 128))
         #    NEXT n
         #CLOSE
         
-        ## TODO un-hardcode the initialization here, and make file i/o (move into GameplayStats class)
+        ## TODO un-hardcode the initialization here, and make file i/o 
+        ## TODO Make json. Come back and do this later
         for i in range(0, 14):  # 14 bikers with which to earn trophies (i.e., finish the game)
-            NumTrophies[i] = 0
+            self.numTrophies[i] = 0
         
         
         ## TODO fix this crap -- there's no reason to loop through this; once you have trophies loaded from file, you can simply check 
+        ## TODO make a player/character class, where there's a property, e.g. unlocked = false for the secret characters.. until they're unlocked. Then unlocked = true
         #=-=-=-=-=-=-=-=-=
         #Check to see if player has gotten secret biker #1
         #=-=-=-=-=-=-=-=-=
         StopFlag = False
-        for n in range(1, 11 + 1):    #TODO: don't hardcode. Research your code - why 1 - 11?
-            if NumTrophies(n) < 1:
+        for n in range(1, 11 + 1):    #TODO: don't hardcode. Research your code - why 1 + 11? (I think because 11 bikers plus 2 extra/secret guys)
+            if self.numTrophies[n] < 1:
                 StopFlag = True
                 break
         if not StopFlag:
@@ -53,8 +125,8 @@ class GameplayStats(object):
         #Check to see if player has gotten secret biker #2
         #=-=-=-=-=-=-=-=-=
         StopFlag = False
-        for n = range(1, 12 + 1):       # Counts 1 to 12. TODO: don't hardcode. Research your code - why 1 - 12?
-            if NumTrophies(n) < 2:
+        for n in range(1, 12 + 1):       # Counts 1 to 12. TODO: don't hardcode. Research your code - why 1 - 12?
+            if self.numTrophies[n] < 2:
                 StopFlag = True
                 break
         if not StopFlag:
@@ -115,119 +187,630 @@ class GameplayStats(object):
         , "I hope you never become a pilot."
         ]
 
+    #==============================================================================
+    #SUB runSummary
+    #==============================================================================
+    # TODO make the run summary a part of the post-render stuff, e.g., in a substate, perhaps.
+    # TODO hahaaaaa, also uncomment this whole function (runSummary) and implement it
+    ##def runSummary:
+    ##    range = 3
+    ##    flag = 1
+    ##    
+    ##    DO
+    ##        LOCATE 1, 1
+    ##        PRINT STRING$(80, "-")
+    ##        message 2, "Run Summary for Level " + LTRIM$(STR$(self.levelMgr.currentLevel)), 1
+    ##        LOCATE 4, 1: PRINT STRING$(80, "-")
+    ##        message 6, "Biker: " + RiderName$, 1
+    ##        LOCATE 7: PRINT STRING$(80, "-")
+    ##        LOCATE 8, 1
+    ##        FOR n = flag TO flag + range        #TrickCounter
+    ##            PRINT TAB(3); LTRIM$(STR$(n));
+    ##            PRINT TAB(10); RunReport$(n)
+    ##        NEXT n
+    ##        PRINT
+    ##        PRINT STRING$(80, "-")
+    ##        PRINT TAB(3); "Total: "; TAB(10); LTRIM$(STR$(gamestats.score)); " pts.";
+    ##        PRINT TAB(30); "<I and K> scroll, <Enter> continues."
+    ##        PRINT STRING$(80, "-")
+    ##        
+    ##        message 23, "Press <Enter> to continue.", 1
+    ##        bike.draw()
+    ##        self.levelMgr.drawLevel()
+    ##        PCOPY 1, 0: CLS
+    ##        
+    ##        a$ = INKEY$
+    ##        SELECT CASE UCASE$(a$)
+    ##            CASE "I"
+    ##                flag = flag - 1
+    ##                if flag < 1 : flag = 1
+    ##            CASE "K"
+    ##                flag = flag + 1
+    ##                if flag > TrickCounter - range : flag = TrickCounter - range
+    ##            CASE CHR$(13)
+    ##                EXIT SUB
+    ##            END SELECT
+    ##        
+    ##    LOOP
+
+class GameStateImpl(GameStateBase):
+    __instance = None
+
+    def __new__(cls):
+        """Override the instantiation of this class. We're creating a singleton yeah"""
+        return None
+
+    def __init__(self):
+        """ This shouldn't run.. We call __init__ on the __instance member"""
+        #super(GameStateImpl, self).__init__()
+        #self.SetName("Playing State")
+        #print "GAMESTATE Playing State __init__ running (creating data members and method functions)"
+        pass
+
+    @staticmethod
+    def Instance():
+        """Return the instance reference. Create it if it doesn't exist
+           
+           This method is a static method because it does not use any object
+        """
+        if GameStateImpl.__instance is None:
+            GameStateImpl.__instance = super(GameStateImpl, GameStateImpl).__new__(GameStateImpl)
+            GameStateImpl.__instance.__init__()
+            GameStateImpl.__instance.SetName("Playing")
+            #print "GAMESTATE Playing State creating __instance object {}".format(GameStateImpl.__instance)
+
+        #print "GAMESTATE Playing State getting __instance {}".format(GameStateImpl.__instance)
+        return GameStateImpl.__instance
+
+    def Init(self, appRef, takeWith=None):
+        self.gamestats = GameplayStats()  # TODO make sure variable scoping and/or function parameters are straight
+
+        self.substate = PlayingSubstate()
+        self.appRef = appRef
+        self.kbStateMgr = KeyboardStateManager()
+
+        self.levelMgr = LevelManager()
+        self.mm = DisplayMessageManager()   # TODO - maybe make names more descriptive? DisplayMessageManager is for (and only for) event-based messages that will appear for some amount of time, then disappear
+
+        self.staticMsg = {}            # a dict to store static DisplayMessage objects ("static" means they appear indefinitely as opposed to DisplayMessageManager messages, which expire after some time)
+        self.InitializeStaticMessages()
+
+        self._eventQueue = MessageQueue() # Event queue, e.g. user key/button presses, system events
+        self._eventQueue.Initialize(64)
+
+        # Register Event Listeners
+        #self._eventQueue.RegisterListener('ball', self.ball.controlState, 'PlayerControl') # Change this to be self.bike
+        #self._eventQueue.RegisterListener('mixer', self.mixer, 'PlaySfx')
+        self._eventQueue.RegisterListener('engine', self.appRef, 'Application') # Register the game engine to listen to messages with topic, "Application"
+
+        self.bike = Bike()   # TODO make sure variable scoping and/or function parameters are straight
+        self.bike.gamestatsRef = self.gamestats # give the bike a reference to gamestats
+        self.bike.mmRef = self.mm               # give the bike a reference to the message manager
+        
+        self.rider = RiderType()                # rider replaced Biker from the QBASIC game
+
+    def Cleanup(self):
+        pass
+
+    # TODO Consider changing "pause" to "PushState" or something; doesn't HAVE to be 'pause'
+    def Pause(self):
+        pass
+
+    # TODO Consider changing "resume" to "PopState" or something; doesn't HAVE to be 'resume'
+    def Resume(self):
+        pass
+
+    def InitializeStaticMessages(self):
+        # TODO/NOTE: the position list could just as easily be a tuple (might even lead to better performance?)
+        # TODO speaking of positions, we'll definitely need to tweak the positioning of these messages, and possibly (probably) allow dynamic positioning
+        self.staticMsg['score'] = DisplayMessage()
+        self.staticMsg['score'].create(txtStr="Score: ", position=[50, 10], color=(192, 64, 64))
+
+        self.staticMsg['level'] = DisplayMessage()
+        self.staticMsg['level'].create(txtStr="Level: ", position=[150, 10], color=(192, 64, 64))
+
+        self.staticMsg['scoreToBeat'] = DisplayMessage()
+        self.staticMsg['scoreToBeat'].create(txtStr="Score to beat: ", position=[250, 10], color=(192,64,64))
+
+        self.staticMsg['speed'] = DisplayMessage()
+        self.staticMsg['speed'].create(txtStr="Speed: ", position=[5,10], color=(192,64,64))
+
+        self.staticMsg['info'] = DisplayMessage()   # This message will be used for crash/pass level/fail level/etc. messages
+        self.staticMsg['info'].create(txtStr="", position=[320, 200], color=(192,64,64))
+
+        self.staticMsg['presskey'] = DisplayMessage()   # This message will be used for crash/pass level/fail level/etc. messages
+        self.staticMsg['presskey'].create(txtStr="", position=[320, 400], color=(192,64,64))
+
+
+    def EnqueueApplicationQuitMessage(self):
+        """Enqueue a message for the application to shut itself down
+        """
+        # TODO maybe make this function (EnqueueQuit) a part of the base gamestate class?
+        self._eventQueue.Enqueue( { 'topic': 'Application',
+                                    'payload': { 'action': 'call_function'
+                                               , 'function_name': 'setRunningFlagToFalse'
+                                               , 'params' : ''
+                                               }
+                                  } )
+
+    def ProcessEvents(self):
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                # Create a quit request message to the application, to shut itself down. This allows the program to do any necessary cleanup before exiting
+                self.EnqueueApplicationQuitMessage()
+            if event.type == pygame.KEYDOWN:
+                if event.key in self.kbStateMgr.trickModifierKeys:
+                    self.kbStateMgr.trickModifier = True
+                self.doControls(event)
+
+            elif event.type == pygame.KEYUP:
+                if event.key in self.kbStateMgr.trickModifierKeys:
+                    self.kbStateMgr.trickModifier = False
+
+    def ProcessCommands(self):
+        # TODO maybe put this command extraction logic into a function at the application class level (or base gamestate level). We're reusing the logic in every gamestate instance
+        msg = self._eventQueue.Dequeue()
+        while msg:
+            print "DEBUG Dequeued message: {}".format(msg)
+            topic = msg['topic']
+            for listener_obj_dict in self._eventQueue.RegisteredListeners(topic):
+                print "DEBUG Registered Listener {} processing message {}".format(listener_obj_dict['name'], msg['payload'])
+
+                # Evaluate the 'action' key to know what to do. The action dictates what other information is required to be in the message
+                if msg['payload']['action'] == 'call_function':
+                    # The registered listener had better have the function call available heh... otherwise, kaboom
+                    objRef = listener_obj_dict['ref']
+                    fn_ptr = getattr(objRef, msg['payload']['function_name'])
+                    argsDict = eval("dict({})".format(msg['payload']['params']))    # params should be a comma-separated list of key=value pairs, e.g. "a = 5, b = 3"
+
+                    print "function args: {}".format(argsDict)
+                    if argsDict:
+                        # In this particular gamestate, we want an argsdict to translate to kwargs. This is because the mixer class is written with kwargs (other classes in other gamestates use dicts, in which case, we pass in argsDict as-is))
+                        fn_ptr(self, **argsDict)
+                    else:
+                        fn_ptr(self)
+
+            msg = self._eventQueue.Dequeue()
+
+    def Update(self, dt_s):
+        # TODO put in fixed timestep updating. We want to update every cycle, but only draw when it's time to
+
+        # TODO note: there are probably things that should ALWAYS happen in the Update function, no matter the substate (e.g. message manager updates?
+        self.mm.update(dt_s)    # TODO possibly also pass in a reference to the gameplay stats object? (that's how we did it Falldown)
+        self.bike.update(dt_s)  # TODO possibly move the bike.update() call into the playing substate?
+
+        if self.substate == PlayingSubstate.startlevel:
+            # Initialize bike
+            self.bike.Init()    # TODO move this out of update()? I'm not sure I like having it here
+
+            # Display level start message
+            self.levelMgr.currentLevel = 1   # TODO don't hardcode the level here. Set self.levelMgr.currentLevel = 1 at game init, then increment
+            self.levelMgr.InitLevel()
+            self.mm.setMessage("Level {}!".format(self.levelMgr.currentLevel), [ 400, 300 ], (192, 64, 64), 5 )  # TODO un-hardcode the render position of the message. But otherwise, use this as a template to replace other message and doMessage calls
+
+            self.substate = PlayingSubstate.playing # TODO maybe put a couple of seconds' delay before substate change, or maybe require a keypress
+        elif self.substate == PlayingSubstate.playing:
+            # TODO!! fix this. The bike should move _through_ the level
+            ### NOTE: What's actually happening here is that we're moving the level around the bike (the bike isn't moving at all)
+            ##FOR n = 1 TO self.levelMgr.numRamps
+            ##    self.levelMgr.ramps[n].x = self.levelMgr.ramps[n].x - self.rider.xvel
+            ##NEXT n
+            ## TODO note/correct - there is some redundancy between the RiderType class and the Bike class. e.g., RiderType has xvel, and Bike have velocity Vector (which has an x component)
+    
+            ##xAdd1 = self.levelMgr.ramps[self.levelMgr.curRamp].x + self.levelMgr.ramps[self.levelMgr.curRamp].dist
+            ###CIRCLE (xAdd1, self.levelMgr.y_ground - 10), 3, 3
+            self.checkRamp(self.levelMgr.curRamp)    # TODO possibly move the checkRamp call into the playing substate?
+
+            if self.bike.inAir:
+                # This is rudimentary "collision detection" (more like a boundary test) for determining when the bike lands (self.levelMgr.y_ground is ground level)
+                # TODO replace the BikePts2D(21).y > self.levelMgr.y_ground with an AABB computation / boundary test
+
+                if self.rider.yvel < 0 and self.bike.aabb._minPt[1] <= 0.0:  # TODO make sure that biker's yvel is 0 when on the ground; otherwise this test will trigger false positives
+                    # TODO after doing rough-cut aabb test, do more precise testing.. somehow. Maybe an intersection test of the wireframe with the ground?
+                    DidNotClearRamp = (BikePts2D(3).x < xAdd1)  # DidNotClearJump is based on which point on the bike touches the ground
+            
+                    y = self.levelMgr.y_ground - 30
+                    self.rider.yvel = 0
+            
+                    if bike.tricking or DidNotClearRamp :
+                        msg = ""
+                        if bike.tricking :
+                            self.staticMsg['info'].changeText(getCrashedMsg(self.gamestats.crashPhrases))
+                            # NOTE: we only set the message here. The drawStatus function will render the message.  But also NOTE: we'll need to make sure to clear out the txtStr property to clear out messages (e.g. "You crashed" messages)
+
+                        else:
+                            self.staticMsg['info'].changeText(getDidNotClearJumpMsg(self.gamestats.rampCrashPhrases))
+                        # Aside: I know the code is weird in this game; I'm porting from QBASIC.. give me a break
+                        self.staticMsg['presskey'].changeText("Press <Enter> to continue.")
+                        self.bike.crashed = True
+                        y = self.levelMgr.y_ground - 15
+            
+                        if (self.bike.model.children['frame'].thy + 180) % 360 >= 270 and (self.bike.model.children['frame'].thy + 180) % 360 <= 90 :
+                            self.bike.model.children['handlebar'].thz = 180
+                            self.bike.model.children['frame'].thz = 180
+
+                        else:
+                            self.bike.model.children['handlebar'].thz = 0
+                            self.bike.model.children['frame'].thz = 0
+                    
+                        self.bike.model.children['frame'].thx = 70
+                        self.bike.model.children['handlebar'].thx = 70
+            
+                        # TODO why did I do thy + 180? Also... Why did I hardcode thx's to 70, above?? Look at the original source
+                        # Ohhh I think this is where we draw the bike in a crashed state
+                        #CALL RotateBike(self.bike.model.children['frame'].thx, self.bike.model.children['frame'].thy + 180, self.bike.model.children['frame'].thz)
+                        #CALL RotateBar(self.bike.model.children['handlebar'].thx, self.bike.model.children['handlebar'].thy + 180, self.bike.model.children['handlebar'].thz)
+
+                        # We compose rotation matrices in ZYX order, so they're applied in XYZ order
+                        self.bike.model.children['handlebar'].matRot = matrix.mMultmat( matrix.Matrix.matRotZ(self.bike.model.children['handlebar'].thz), matrix.Matrix.matRotY(self.bike.model.children['handlebar'].thy)  )
+                        self.bike.model.children['handlebar'].matRot = matrix.mMultmat( self.bike.model.children['handlebar'].matRot, matrix.Matrix.matRotX(self.bike.model.children['handlebar'].thx) )
+
+                        self.bike.model.children['frame'].matRot = matrix.mMultmat( matrix.Matrix.matRotZ(self.bike.model.children['frame'].thz), matrix.Matrix.matRotY(self.bike.model.children['frame'].thy)  )
+                        self.bike.model.children['frame'].matRot = matrix.mMultmat( self.bike.model.children['frame'].matRot, matrix.Matrix.matRotX(self.bike.model.children['frame'].thx) )
+                        # Note: There has to be a better way to access vars and functions.. These lines of code are super long...
+
+                        self.levelMgr.drawLevel()
+                        self.bike.draw()
+
+                        #PCOPY 1, 0: CLS
+                        #WHILE INKEY$ <> CHR$(13): WEND
+                        self.rider.xvel = 0
+            
+                    if not bike.crashed:
+                        self.levelMgr.curRamp = self.levelMgr.curRamp + 1
+                    # NOTE the following substate change logic could just as easily go into a function (and maybe should?)
+                    else:
+                        self.substate = PlayingSubstate.crashed
+
+                    # Note: the following stuff is what happens once a trick is landed. Perhaps put into a helper function
+                    self.bike.inAir = False
+                    gamestats.score = gamestats.score + self.gamestats.addScore
+                    self.gamestats.addScore = 0
+                    self.gamestats.numTricks = 0
+                    self.bike.model.children['frame'].thz = 0
+                    self.bike.model.children['handlebar'].thz = 0
+                    one = 15        #Tab stops
+            
+                if self.levelMgr.curRamp > self.levelMgr.numRamps:  # You've finished the level
+                    # TODO clean up this code; likely don't need to redo drawing here. Also, here, we should probably change to a different substate, and then handle the run summary there
+                    ##CALL RotateBike(self.bike.model.children['frame'].thx, self.bike.model.children['frame'].thy + 180, self.bike.model.children['frame'].thz)
+                    ##CALL RotateBar(self.bike.model.children['handlebar'].thx, self.bike.model.children['handlebar'].thy + 180, self.bike.model.children['handlebar'].thz)
+                    ##self.levelMgr.drawLevel()
+                    ##bike.draw()
+                    ##self.drawStatus
+                    self.staticMsg['presskey'].changeText("Press <Enter> to continue.")
+            
+                    if gamestats.score >= ScoreToBeat(self.levelMgr.currentLevel) :
+                        self.levelManager.levelFinished = True  # TODO evaluate whether this flag is necessary. If we need to stay in the level state for a while, then keep it. But if it makes more sense to increment the level counter here, and go to a new substate, then do that
+                        # TODO as always, look at what function is being called here
+                        self.staticMsg['info'].changeText(getBeatLevelMsg(self.gamestats.successPhrases))
+                        # TODO add level increment here
+            
+                    else:
+                        # TODO probably don't need this logic here. Simply change game substate to startlevel
+            
+                        self.bike.Init()    # TODO evaluate -- do we need to totally reinit here (Init() loads the model from disk.. Might be overkill)
+                        self.levelMgr.InitLevel()
+                        self.staticMsg['info'].changeText(getLostLevelMsg(self.gamestats.failurePhrases))
+                    # TODO wait for keypress here? Should there be substates for all these little things, like a substate for game-finished-at-first, and then for game-still-finished-show-run-summary, etc?
+                    #WHILE INKEY$ <> CHR$(13): WEND
+            
+                    if self.gamestats.doRunSummary:
+                        if self.levelMgr.levelFinished:
+                            self.gamestats.runSummary()
+
+        elif self.substate == PlayingSubstate.crashed:
+            self.bike.Init()    # TODO evaluate -- do we need to totally reinit here (Init() loads the model from disk.. Might be overkill)
+            self.levelMgr.InitLevel(self.levelMgr.currentLevel)    # TODO replace with level manager
+
+            # TODO make sure this clearing stuff is at the end of the substate? After user has presed any key to continue or whatever?
+            self.mm.clear()
+            self._eventQueue.Clear()
+            self._eventQueue.Initialize(64) # TOOD perhaps don't hardcode the # of events that can be handled by this queue
+    
+            self.substate = PlayingSubstate.resetlevel
+            # TODO perhaps wait for user input? (put that logic into ProcessEvents)
+
+        elif self.substate == PlayingSubstate.finishlevel:
+            # TODO make sure the game switches into this substate
+            if LevelFinished:		# TODO make LevelFinished a vital stat (and probably also make the LevelManager aware of it? Not exactly sure how to handle this just yet
+                self.levelMgr.currentLevel = self.levelMgr.currentLevel + 1
+            
+                if self.levelMgr.currentLevel > self.levelMgr.finalLevel:
+                    # TODO this message should stay up indefinitely.
+                    # TODO don't hardcode the message locations
+                    self.staticMsg['info'].changeText("GAME OVER")
+                    self.staticMsg['presskey'].changeText("Press <Enter> to return to main menu.")
+                 
+                    # TODO still review this code. Most of it was written in QBASIC days, when you really sucked at programming
+                    if self.numTrophies[BikeStyle] < 2:	# NOTE: here, BikeStyle operates like "SelectedRider"
+	        			# write trophy data to file
+                        self.numTrophies[BikeStyle] += 1
+            
+                        self.staticMsg['info'].changeText("Congratulations, you got a trophy!!!")
+
+                        #OPEN "trophies.dat" FOR OUTPUT AS #1    # TODO don't delete this; pythonize file output
+                        #    FOR n = 1 TO 13
+                        #        PRINT #1, CHR$(ASC(LTRIM$(STR$(self.numTrophies[n]))) + 128)
+                        #    NEXT n
+                        #CLOSE
+        elif self.substate == PlayingSubstate.gameover:
+            #TODO high scores
+            #TODO go back to main menu (state change; not a mere substate change)
+            pass
+
+    def PreRenderScene(self):
+        pass
+
+    def RenderScene(self):
+        # TODO put in fixed timestep updating / some time of timer class. We want to update every cycle, but only draw when it's time to. Something like: if timer.timeToDraw: draw it else: return
+        self.appRef.surface_bg.fill((0,0,0))
+
+        self.levelMgr.drawLevel(self.appRef.surface_bg)
+        self.bike.draw(self.appRef.surface_bg)
+
+    def PostRenderScene(self):
+        self.drawStatus(self.appRef.surface_bg)    # TODO: Pythonize. status can be an overlay on the game window
+        pygame.display.flip()
+
+    #==============================================================================
+    #SUB self.drawStatus
+    #Display the status/score stuff on the screen
+    #==============================================================================
+    def drawStatus(self, screen):
+        l = 120
+        w = 4
+        by = 5
+        bx = 50
+        
+        # TODO what color are B and BF?? Maybe they're set by the bike colors?? I can't remember :-S. Pretty sure B mean bar color, and BF means bar fill color, or something like that.
+        #LINE (bx - 1, by)-(bx + l + 1, by + w), BikeCol(1), B
+        #LINE (bx, by + 1)-(bx + l * (self.rider.xvel / self.rider.maxspd), by + w - 1), BikeCol(2), BF
+
+        if self.rider.maxspd == 0.0:
+            self.rider.maxspd = 1.0 # TODO delete this hack; the purpose of it is to simply get the game up and running, before implementing character selection
+        pygame.draw.line(self.appRef.surface_bg, (255,255,255), (bx - 1, by), (bx + l + 1, by + w))
+        pygame.draw.line(self.appRef.surface_bg, (0,255,0), (bx, by + 1), (bx + l * (self.bike.velocity[0] / self.rider.maxspd), by + w - 1)) # TODO we still need to make maxspd a property of something
+        
+        
+        #LOCATE 1, 25: PRINT "Score: "; LTRIM$(STR$(gamestats.score))
+        #LOCATE 1, 40: PRINT "Level "; LTRIM$(STR$(self.levelMgr.currentLevel))
+        #LOCATE 1, 50: PRINT "Score to beat = "; LTRIM$(STR$(ScoreToBeat(self.levelMgr.currentLevel))); " pts."
+        self.staticMsg['speed'].changeText("Speed: {}".format(self.rider.xvel))
+        textSurfaceSpeed = self.staticMsg['speed'].getTextSurface(self.mm._font)    # Here we're using the message manager's font
+        self.appRef.surface_bg.blit(textSurfaceSpeed, (self.staticMsg['speed']._position[0], self.staticMsg['speed']._position[1]))
+
+        self.staticMsg['score'].changeText("Score: {}".format(self.gamestats.score))
+        textSurfaceScore = self.staticMsg['score'].getTextSurface(self.mm._font)    # Here we're using the message manager's font
+        self.appRef.surface_bg.blit(textSurfaceScore, (self.staticMsg['score']._position[0], self.staticMsg['score']._position[1]))
+
+        self.staticMsg['level'].changeText("Level: {}".format(self.levelMgr.currentLevel))
+        textSurfaceLevel = self.staticMsg['level'].getTextSurface(self.mm._font)
+        self.appRef.surface_bg.blit(textSurfaceLevel, (self.staticMsg['level']._position[0], self.staticMsg['level']._position[1]))
+
+        self.staticMsg['scoreToBeat'].changeText("Score to beat: {}".format(self.levelMgr.scoreToBeat))
+        textSurfaceScoreToBeat = self.staticMsg['scoreToBeat'].getTextSurface(self.mm._font)
+        self.appRef.surface_bg.blit(textSurfaceScoreToBeat, (self.staticMsg['scoreToBeat']._position[0], self.staticMsg['scoreToBeat']._position[1]))
+
+        if self.staticMsg['info']._text:   # Render info message if it exists
+            textSurfaceInfo = self.staticMsg['info'].getTextSurface(self.mm._font)
+            self.appRef.surface_bg.blit(textSurfaceInfo, (self.staticMsg['info']._position[0], self.staticMsg['info']._position[1]))
+
+        if self.staticMsg['presskey']._text:   # Render info message if it exists
+            textSurfaceInfo = self.staticMsg['presskey'].getTextSurface(self.mm._font)
+            self.appRef.surface_bg.blit(textSurfaceInfo, (self.staticMsg['presskey']._position[0], self.staticMsg['presskey']._position[1]))
+
+# PlayingState-specific helper functions
+
+#==============================================================================
+#SUB DoControls
+#Handle keyboard input
+#==============================================================================
+    def DoControls(self, event):
+        # This will be the input handling function of the playing game state
+        
+        #CASE "p", "P"
+        ## TODO revisit.. gamestats.paused?? Let's make pause its own game_state..
+        #if gamestats.paused == 0:
+        #    s$ = "-=* PHAT FREEZE FRAME SNAPSHOT *=-"
+        #    LOCATE 6, 41 - LEN(s$) / 2: PRINT s$
+        #    self.levelMgr.drawLevel()
+        #    bike.draw()
+        #    self.drawStatus
+        #    PCOPY 1, 0: CLS
+        #    gamestats.paused = 1
+        #    WHILE INKEY$ = "": WEND
+        #    gamestats.paused = 0
+        #END IF
+        
+        # TODO perhaps honor the escape key?
+        #CASE CHR$(27)
+        #    Quit = True
+        #    EXIT SUB
+
+        if event.key == pygame.K_l:
+            if not self.bike.inAir:
+                self.rider.xvel = self.rider.xvel + self.rider.pump
+                if self.rider.xvel >= self.rider.maxspd:
+                    self.rider.xvel = self.rider.maxspd
+         
+        elif self.bike.inAir and not bike.tricking:
+            if event.key == pygame.K_j:
+                if self.kbStateMgr.trickModifier:
+                    self.gamestats.activeTrick = 2   # Note: self.gamestats.activeTrick is the trick identifier (selects which trick animation to play)
+                    bike.tricking = -1
+                    self.gamestats.numTricks += 1
+                    TrickCounter = TrickCounter + 1
+        
+                else:
+                    self.gamestats.activeTrick = 1
+                    bike.tricking = -1
+                    self.gamestats.numTricks += 1
+                    TrickCounter = TrickCounter + 1
+        
+            elif event.key == pygame.K_k:
+                if self.kbStateMgr.trickModifier:
+                    self.gamestats.activeTrick = 4
+                    bike.tricking = -1
+                    self.gamestats.numTricks += 1
+                    TrickCounter = TrickCounter + 1
+        
+                else:
+                    self.gamestats.activeTrick = 3
+                    bike.tricking = -1
+                    MemAngle = self.bike.model.children['handlebar'].thy
+                    self.gamestats.numTricks += 1
+                    TrickCounter = TrickCounter + 1
+        
+            elif event.key == pygame.K_i:
+                if self.kbStateMgr.trickModifier:
+                    self.gamestats.activeTrick = 16
+                    bike.tricking = -1
+                    MemAngle = self.bike.model.children['frame'].thz
+                    self.gamestats.numTricks += 1
+                    TrickCounter = TrickCounter + 1
+
+                else:
+                    self.gamestats.activeTrick = 5
+                    bike.tricking = -1
+                    MemAngle = self.bike.model.children['frame'].thz
+                    self.gamestats.numTricks += 1
+                    TrickCounter = TrickCounter + 1
+        
+            elif event.key == pygame.K_u:
+                if self.kbStateMgr.trickModifier:
+                    self.gamestats.activeTrick = 9
+                    bike.tricking = -1
+                    self.gamestats.numTricks += 1
+                    TrickCounter = TrickCounter + 1
+        
+                else:
+                    self.gamestats.activeTrick = 7
+                    bike.tricking = -1
+                    self.gamestats.numTricks += 1
+                    TrickCounter = TrickCounter + 1
+            
+            elif event.key == pygame.K_o:
+                if self.kbStateMgr.trickModifier:
+                    self.gamestats.activeTrick = 10
+                    bike.tricking = -1
+                    MemAngle = self.bike.model.children['frame'].thz
+                    self.gamestats.numTricks += 1
+                    TrickCounter = TrickCounter + 1
+        
+                else: 
+                    self.gamestats.activeTrick = 8
+                    bike.tricking = -1
+                    self.gamestats.numTricks += 1
+                    TrickCounter = TrickCounter + 1
+         
+            elif event.key == pygame.K_h:
+                if self.kbStateMgr.trickModifier:
+                    self.gamestats.activeTrick = 12
+                    bike.tricking = -1
+                    self.gamestats.numTricks += 1
+                    TrickCounter = TrickCounter + 1
+        
+                else:
+                    self.gamestats.activeTrick = 11
+                    bike.tricking = -1
+                    self.gamestats.numTricks += 1
+                    MemAngle = self.bike.model.children['frame'].thz
+                    TrickCounter = TrickCounter + 1
+        
+            elif event.key == pygame.K_y:
+                if self.kbStateMgr.trickModifier:
+                    self.gamestats.activeTrick = 14
+                    bike.tricking = -1
+                    self.gamestats.numTricks += 1
+                    TrickCounter = TrickCounter + 1
+                    MemAngle = self.bike.model.children['frame'].thz
+        
+                else: 
+                    self.gamestats.activeTrick = 13
+                    bike.tricking = -1
+                    self.gamestats.numTricks += 1
+                    TrickCounter = TrickCounter + 1
+                    MemAngle = self.bike.model.children['frame'].thz
+        
+            elif event.key == pygame.K_n:
+                if self.kbStateMgr.trickModifier:
+                    MemAngle = self.bike.model.children['frame'].thz
+                    self.gamestats.activeTrick = 15
+                    bike.tricking = -1
+                    self.gamestats.numTricks += 1
+                    TrickCounter = TrickCounter + 1
+        
+                else:
+                    self.gamestats.activeTrick = 6
+                    bike.tricking = -1
+                    MemAngle = self.bike.model.children['frame'].thz
+                    self.gamestats.numTricks += 1
+                    TrickCounter = TrickCounter + 1
+        
+        
+            #Lean back
+            elif event.key == pygame.K_q:
+                self.bike.model.children['frame'].thz = self.bike.model.children['frame'].thz - self.rider.turn / 2
+                self.bike.model.children['handlebar'].thz = self.bike.model.children['handlebar'].thz - self.rider.turn / 2
+            
+            #Lean forward
+            elif event.key == pygame.K_w:
+                self.bike.model.children['frame'].thz = self.bike.model.children['frame'].thz + self.rider.turn / 2
+                self.bike.model.children['handlebar'].thz = self.bike.model.children['handlebar'].thz + self.rider.turn / 2
+        
+    #==============================================================================
+    #SUB checkRamp ()
+    #Rudimentary collision detection -- test whether the bike has hit a ramp
+    #==============================================================================
+    #TODO replace with collision detection and trigonometry
+    def checkRamp(self, n):
+        # TODO pick up from here -- fix the CheckRamp function to be Python-compliant.
+        if self.bike.inAir:
+            return
+    
+        # TODO List of Ramp objects should belong to the Level object (also TODO: make a Level object :-D)
+        ex = self.levelMgr.ramps[n].x + self.levelMgr.ramps[n].length * coss(360 - self.levelMgr.ramps[n].incline)
+        ey = self.levelMgr.ramps[n].y + self.levelMgr.ramps[n].length * sinn(360 - self.levelMgr.ramps[n].incline)
+    
+        if self.levelMgr.ramps[n].x <= BarPts2D(5).x:  # TODO don't hardcode points.. Use references
+            self.bike.model.children['frame'].thz = 360 - self.levelMgr.ramps[n].incline # TODO compose rotation matrices. i.e. the bike as a whole will have its own rotation matrix; then, the handlebars will have a matrix, and so will the frame. (And also tires, eventually)
+            self.bike.model.children['handlebar'].thz = self.bike.model.children['frame'].thz
+    
+            self.rider.yvel = self.rider.jump * (self.rider.xvel * sinn(self.bike.model.children['frame'].thz)) + 2.25    #1.5707 # TODO do better math than this. You came up with these numbers just through trial and error.. what looked good
+            self.rider.xvel = self.rider.xvel * coss(self.bike.model.children['frame'].thz)
+    
+            y = ey - 18 # TODO: Fix. Don't hardcode bike's y-position when jumping. Use collision detection, or otherwise math formulas to determine the bike's position on the ramp
+    
+            self.bike.inAir = True
+
+
+
 
 # TODO replace this level initialization stuff with something else.. In the game playing state, there should be a point at which the game loads a new level, restarts the current level, etc.
 #=-=-=-=-=-=-=-=-=
 
-bike = Bike()   # TODO make sure variable scoping and/or function parameters are straight
-bike.Init()
-
-gamestats = GameplayStats()  # TODO make sure variable scoping and/or function parameters are straight
-
-# TODO use game state management like from Falldown
-
 # NOTE: MainMenu is the main menu. Once the main menu exits, the game begins. In QBASIC, you had put the entire game at level 0 (i.e., it's not in a function or anything).
 
-# TODO: Convert the MainMenu() function call a game_state change. Put game play into a game loop.
-Level = 1
-bike.Init()
-InitLevel(Level)
 
-CONST AnnounceFrames = 25 # TODO replace with a timer (see Falldown x64. In QBASIC, We used to be able to rely on VSYNC, so we could specify a number of frames to wait, to use as a timer. Nowadays, it's better to use a timer
-LocateRow = 12  # TODO replace with display_msg and display_msg_manager. LOCATE is a qbasic-only thing
-
-# Note: here, you're displaying a "Level n" message at the start of the level. Use display messages
-msg = "Level " + LTRIM$(STR$(Level))           # TODO make Msg a local var (it's currently global)
-message LocateRow, msg, INT(AnnounceFrames)    # TODO replace these message calls with the messaging system from Falldown x64
-
-# TODO: Convert TIMER to pygame get_ticks() or whatever (or some other high-res timer)
-FPStimerA = INT(TIMER)      # TODO replace FPStimerA and B with pygame.time.get_ticks() calls
-FPStimerB = FPStimerA + 1
-
-prev_time = pygame.time.get_ticks()
+##DO      # TODO pythonize. This is where the game loop starts. Perhaps it should be the PlayingState
+##    AutoDecel()     # TODO replace AutoDecel hackery with proper physics. Should be in bike.update()
+##    
+##LOOP        # TODO pythonize. This is where the game loop ends
 
 
-DO      # TODO pythonize. This is where the game loop starts. Perhaps it should be the PlayingState
-
-    curr_time = pygame.time.get_ticks()
-	dt_s = (curr_time - prev_time) / 1000.0
-	prev_time = curr_time
-
-    if bike.crashed:					# TODO put Crash into game vital stats
-        bike.Init()
-        InitLevel(Level)
-    
-    if LevelFinished:		# TODO make LevelFinished a vital stat
-        bike.Init()
-        Level = Level + 1
-    
-        if Level > FinalLevel:
-            message 12, STRING$(80, " "), 1
-            message 12, "GAME OVER - Press <Enter> to return to main menu.", 1
-         
-            if NumTrophies(BikeStyle) < 2:	# NOTE: here, BikeStyle operates like "SelectedRider"
-				# write trophy data to file
-                NumTrophies(BikeStyle) = NumTrophies(BikeStyle) + 1
-    
-                message 13, "Congratulations, you got a trophy!!!", 1
-                OPEN "trophies.dat" FOR OUTPUT AS #1    # TODO pythonize file output
-                    FOR n = 1 TO 13
-                        PRINT #1, CHR$(ASC(LTRIM$(STR$(NumTrophies(n)))) + 128)
-                    NEXT n
-                CLOSE
-         
-            DrawLevel()
-			bike.draw()
-            #doMessage LocateRow, msg, 1
-            PCOPY 1, 0: CLS                 # TODO: port pcopy/cls to pygame
-            WHILE INKEY$ <> CHR$(13): WEND  # TODO pythonize
-            GOTO Menu                       # TODO get rid of Goto. Here, we should be returning from the game play function to the main menu
-
-        InitLevel(Level)
-        msg = "Level " + LTRIM$(STR$(Level))
-        message LocateRow, msg, INT(AnnounceFrames)
-    
-    
-    if Quit:            # TODO Pythonize bool - Quit should be accessible to the engine
-        Quit = False
-        GOTO Menu       # TODO get rid of Goto. Return from func, or change state, or whatever
-    
-    
-    DoControls()
-    if bike.tricking:
-        DoTrick(Trick)
-    CALL RotateBike(Txf, Tyf + 180, Tzf)
-    CALL RotateBar(Txh, Tyh + 180, Tzh)
-    
-    doMessage LocateRow, msg, MsgFrames
-    
-    Move  #Animate
-    CALL CheckRamp(CurRamp)
-    
-    #if FPS >= 10:   #try to speed things up on slower computers
-    DrawLevel()
-    bike.draw()
-    DrawStatus()    # TODO: status can be an overlay on the game window
-    PCOPY 1, 0: CLS
-    #END IF
-    
-    AutoDecel()     # TODO replace AutoDecel hackery with proper physics
-    
-LOOP        # TODO pythonize. This is where the game loop ends
-
-
-#==============================================================================
-#SUB AutoDecel
-#This sub handles rolling friction
-#The Physics handler will subsume this sub.
-#==============================================================================
-#TODO replace AutoDecel with physics. There should be whatever is necessary: coefficients of friction etc
-def AutoDecel():
-# TODO add params to this function. In the QBASIC version, you made all vars global. Terrible design :-D
-    if not InAir:       # InAir should be part of the bike object (also TODO: make a bike object :-D)
-        Biker.xvel = Biker.xvel - .075
-        if Biker.xvel <= 0:
-            Biker.xvel = 0
+###==============================================================================
+###SUB AutoDecel
+###This sub handles rolling friction
+###The Physics handler will subsume this sub.
+###==============================================================================
+###TODO replace AutoDecel with physics. There should be whatever is necessary: coefficients of friction etc
+##def AutoDecel():
+### TODO add params to this function. In the QBASIC version, you made all vars global. Terrible design :-D
+##    if not self.bike.inAir:       # self.bike.inAir should be part of the bike object (also TODO: make a bike object :-D)
+##        self.rider.xvel = self.rider.xvel - .075
+##        if self.rider.xvel <= 0:
+##            self.rider.xvel = 0
 
 
 #==============================================================================
@@ -238,867 +821,14 @@ def getBeatLevelMsg(successPhrases):
     i = int( random.random() * len(successPhrases) ) + 1
     return successPhrases[i]
 
-#==============================================================================
-#SUB CheckRamp (n)
-#Rudimentary collision detection -- test whether the bike has hit a ramp
-#==============================================================================
-#TODO replace with collision detection and trigonometry
-def CheckRamp(n):
-    if InAir:   # TODO: InAir should belong to the bike object
-        return
-
-    # TODO List of Ramp objects should belong to the Level object (also TODO: make a Level object :-D)
-    ex = Ramp(n).x + Ramp(n).length * coss(360 - Ramp(n).incline)
-    ey = Ramp(n).y + Ramp(n).length * sinn(360 - Ramp(n).incline)
-
-    if Ramp(n).x <= BarPts2D(5).x:  # TODO don't hardcode points.. Use references
-        Tzf = 360 - Ramp(n).incline # TODO compose rotation matrices. i.e. the bike as a whole will have its own rotation matrix; then, the handlebars will have a matrix, and so will the frame. (And also tires, eventually)
-        Tzh = Tzf
-
-        Biker.yvel = Biker.jump * (Biker.xvel * sinn(Tzf)) + 2.25    #1.5707 # TODO do better math than this. You came up with these numbers just through trial and error.. what looked good
-        Biker.xvel = Biker.xvel * coss(Tzf)
-
-        y = ey - 18 # TODO: Fix. Don't hardcode bike's y-position when jumping. Use collision detection, or otherwise math formulas to determine the bike's position on the ramp
-
-        InAir = True
 
 #==============================================================================
 #FUNCTION getCrashedMsg
 #Returns a random crash phrase
 #==============================================================================
-def getCrashedMsg():
-    # TODO: Perhaps crashPhrases should belong to the game object
+def getCrashedMsg(crashPhrases):
     p = int(random.random() * len(crashPhrases)) + 1
     return crashPhrases[p]
-
-
-#==============================================================================
-#SUB DoTrick (n)
-#Execute tricks
-#==============================================================================
-def DoTrick(n):
-    SELECT CASE n
-        CASE 1                #360 degree turn
-            Tyh = Tyh + (Biker.turn * 1) / 1.5
-            Tyf = Tyf + (Biker.turn * 1) / 1.5
-            Tzf = Tzf + 1
-            Tzh = Tzh + 1
-            if Tyf MOD 360 = 0:
-                bike.tricking = 0
-                msg = "360 Turn!!!"
-            END IF
-    
-        CASE 2                #Tailwhip
-            Tyf = Tyf + Biker.turn
-            Tzf = Tzf + 1
-            Tzh = Tzh + 1
-            if Tyf MOD 360 = 0:
-                bike.tricking = 0
-                msg = "Tailwhip!!!"
-            END IF
-    
-        CASE 3                #180 degree barturn
-            if bike.trickPhase = 1:
-                Tyh = Tyh + Biker.turn
-            if bike.trickPhase = 6:
-                Tyh = Tyh - Biker.turn
-         
-            Tzf = Tzf + 1
-            Tzh = Tzh + 1
-         
-            if Tyh MOD 90 = 0:
-                bike.trickPhase = bike.trickPhase + 1
-            if Tyh = MemAngle:
-                bike.tricking = 0
-                MemAngle = 0
-                bike.trickPhase = 1
-                msg = "X-Up!!!"
-            END IF
-    
-        CASE 4                #360 degree barspin
-            Tyh = Tyh + Biker.turn
-            if Tyh MOD 360 = 0:
-                bike.tricking = 0
-                msg = "Barspin!!!"
-            END IF
-            Tzf = Tzf + 1
-            Tzh = Tzh + 1
-    
-        CASE 5                #Backflip
-            tfactor = 5 / 2
-            Tzf = Tzf - Biker.turn / tfactor
-            Tzh = Tzh - Biker.turn / tfactor
-            if Tzf <= MemAngle - 330:
-                bike.tricking = 0
-                MemAngle = 0
-                msg = "Backflip!!!"
-            END IF
-    
-        CASE 6                #Inverted 180
-            tfactor = 5 / 2 #either 2 or 5/2
-            Txf = Txf + Biker.turn / tfactor
-            Txh = Txh + Biker.turn / tfactor
-
-            Tyf = Tyf + Biker.turn / tfactor
-            Tyh = Tyh + Biker.turn / tfactor
-
-            Tzf = Tzf + 2
-            Tzh = Tzh + 2
-
-            if Txf MOD 360 = 0 :
-                bike.tricking = 0
-                msg = "Inverted 180!!!"
-            END IF
-    
-        CASE 7            #Corkscrew (don't try this at home)
-            Txf = Txf + Biker.turn / 2
-            Txh = Txh + Biker.turn / 2
-            Tzf = Tzf + 1: Tzh = Tzh + 1
-    
-            if Txf MOD 360 = 0:
-                bike.tricking = 0
-                msg = "Corkscrew!!!"
-            END IF
-    
-        CASE 8            #Double Barspin Tailwhip
-            Tyf = Tyf - Biker.turn
-            Tyh = Tyh + Biker.turn * 2
-            Tzf = Tzf + 1
-            Tzh = Tzh + 1
-    
-            if Tyf MOD 360 = 0:
-                bike.tricking = 0
-                msg = "Double Barspin/Tailwhip!!!"
-            END IF
-        
-        CASE 9            #Wicked Tabletop
-            if bike.trickPhase = 1:
-                Txf = Txf + Biker.turn / 2
-                Txh = Txh + Biker.turn / 2
-            END IF
-            if bike.trickPhase = 5:
-                Txf = Txf - Biker.turn / 2
-                Txh = Txh - Biker.turn / 2
-            END IF
-         
-            Tzf = Tzf + 2
-            Tzh = Tzh + 2
-         
-            if Txf MOD 90 = 0:
-                bike.trickPhase = bike.trickPhase + 1
-            if Txf MOD 360 = 0:
-                bike.tricking = 0
-                bike.trickPhase = 1
-                msg = "Tabletop!!!"
-            END IF
-    
-        CASE 10         #Twisting Corkscrew
-            tfactor = 5 / 2
-                Tzf = Tzf - Biker.turn / tfactor
-                Tzh = Tzh - Biker.turn / tfactor
-                Txf = Txf - Biker.turn / tfactor
-                Txh = Txh - Biker.turn / tfactor
-                     
-            if Tzf <= MemAngle - 330 :
-                Txf = 0: Txh = 0
-                bike.tricking = 0
-                MemAngle = 0
-                bike.trickPhase = 1
-                msg = "Twisting Corkscrew!!!"
-            END IF
-    
-            CASE 11             #Backflip Tailwhip
-                if bike.trickPhase = 1 OR bike.trickPhase = 2 OR bike.trickPhase = 3:
-                    Tzf = Tzf - Biker.turn * (1 / 3)
-                    Tzh = Tzh - Biker.turn * (1 / 3)
-                END IF
-    
-                if bike.trickPhase = 1 AND Tzf <= MemAngle - 90:
-                    bike.trickPhase = 2
-    
-                if bike.trickPhase = 2:
-                    Tyf = Tyf + Biker.turn / (3 / 2)
-                END IF
-    
-                if bike.trickPhase = 2 AND Tyf MOD 360 = 0:
-                    bike.trickPhase = 3
-    
-                if Tzf <= MemAngle - 330:
-                    bike.tricking = 0
-                    MemAngle = 0
-                    bike.trickPhase = 1
-                    msg = "Backflip Tailwhip!!!"
-                END IF
-         
-            CASE 12                     #360 turn + 360 barspin
-            Tzf = Tzf + 1
-            Tzh = Tzh + 1
-                if bike.trickPhase = 1:
-                    Tyf = Tyf + Biker.turn / 2
-                    Tyh = Tyh + Biker.turn / 2
-                END IF
-                if bike.trickPhase = 2:
-                    Tyh = Tyh - Biker.turn
-                END IF
-                if bike.trickPhase = 3: 
-                    Tyf = Tyf + Biker.turn / 2
-                    Tyh = Tyh - Biker.turn
-                END IF
-    
-                if bike.trickPhase = 1 AND Tyf MOD 180 = 0:
-                    bike.trickPhase = 2
-                if bike.trickPhase = 2 AND Tyh MOD 360 = 0:
-                    bike.trickPhase = 3
-                if bike.trickPhase = 3 AND Tyf MOD 360 = 0:
-                    bike.tricking = 0
-                    bike.trickPhase = 1
-                    msg = "360 Turn + Barspin!!!"
-                END IF
-    
-            CASE 13                         #Air Endo
-                if bike.trickPhase = 1:
-                    Tzf = Tzf + Biker.turn * (1 / 4)
-                    Tzh = Tzf
-                END IF
-                if bike.trickPhase > 4:
-                    Tzf = Tzf - Biker.turn * (1 / 4)
-                    Tzh = Tzf
-                END IF
-    
-                if Tzf >= MemAngle + 60:
-                    bike.trickPhase = bike.trickPhase + 1
-                if bike.trickPhase > 4 AND Tzf <= MemAngle + 30:
-                    bike.tricking = 0
-                    bike.trickPhase = 1
-                    MemAngle = 0
-                    msg = "Air Endo!!!"
-                END IF
-    
-            CASE 14                         #Air Endo plus bar twist
-                if bike.trickPhase = 1:
-                    Tzf = Tzf + Biker.turn * (1 / 4)
-                    Tzh = Tzf
-                END IF
-             
-                if bike.trickPhase = 1 AND Tzf >= MemAngle + 60:
-                    bike.trickPhase = 2
-                if bike.trickPhase = 3 AND Tyh MOD 360 = 0:
-                    bike.trickPhase = 4
-    
-                if bike.trickPhase = 2:
-                    Tyh = Tyh - Biker.turn / 2
-                END IF
-            
-                if (bike.trickPhase = 2 OR bike.trickPhase = 3) AND Tyh MOD 180 = 0:
-                    bike.trickPhase = bike.trickPhase + 1
-    
-                if bike.trickPhase = 3:
-                    Tyh = Tyh + Biker.turn / 2
-                END IF
-    
-                if bike.trickPhase = 4:
-                    Tzf = Tzf - Biker.turn * (1 / 4)
-                    Tzh = Tzf
-                END IF
-         
-                
-                if bike.trickPhase = 4 AND Tzf <= MemAngle + 30:
-                    bike.tricking = 0
-                    bike.trickPhase = 1
-                    MemAngle = 0
-                    msg = "Air Endo + Bar Twist!!!"
-                END IF
-    
-            CASE 15                 #Turndown
-                if bike.trickPhase = 1:
-                    Tyf = Tyf - Biker.turn * (1 / 2)
-                    Tzf = Tzf + Biker.turn * (1 / 2)
-                    Tzh = Tzh + Biker.turn * (1 / 2)
-                END IF
-                
-                if Tyf MOD 90 = 0:
-                    bike.trickPhase = bike.trickPhase + 1
-    
-                if bike.trickPhase = 6:
-                    Tyf = Tyf + Biker.turn * (1 / 2)
-                    Tzf = Tzf - Biker.turn * (1 / 2)
-                    Tzh = Tzh - Biker.turn * (1 / 2)
-                END IF
-    
-                if bike.trickPhase = 6 AND Tyf MOD 360 = 0:
-                    Tzf = Tzf + 30
-                    Tzh = Tzf
-                    bike.trickPhase = 1
-                    bike.tricking = 0
-                    msg = "Turndown!!!"
-                END IF
-    
-                #Tzf = 80: Txf = 0
-                #Tyh = 0: Tzh = Tzf: Txh = 0
-    
-            CASE 16             #Flair
-                if bike.trickPhase = 1: #OR bike.trickPhase = 3
-                    Tzf = Tzf - (Biker.turn * .4)
-                    Tzh = Tzh - (Biker.turn * .4)
-                END IF
-    
-                if bike.trickPhase = 3:
-                    Tzf = Tzf - (Biker.turn * .5)
-                    Tzh = Tzh - (Biker.turn * .5)
-                END IF
-    
-                if bike.trickPhase = 1 AND Tzf <= MemAngle - 135:
-                    bike.trickPhase = 2
-    
-                if bike.trickPhase = 2:
-                    Tzf = Tzf - (Biker.turn * .25)
-                    Tzh = Tzh - (Biker.turn * .25)
-    
-                    Tyf = Tyf + (Biker.turn * .5)
-                    Tyh = Tyh + (Biker.turn * .5)
-                END IF
-    
-                if bike.trickPhase = 2 AND Tyf MOD 360 = 0:
-                    bike.trickPhase = 3
-    
-                if bike.trickPhase = 3 AND Tzf <= MemAngle - 330:
-                    bike.tricking = 0
-                    bike.trickPhase = 1
-                    MemAngle = 0
-                    msg = "Flair!!!"
-                END IF
-    
-    
-    END SELECT
-    
-     
-    
-        if bike.tricking = 0 :
-                AddScore = INT(AddScore + Worth(Trick) - ((Factor * TimesUsed(Trick)) * Worth(Trick)))
-                if AddScore <= 0:
-                    AddScore = 1
-                TimesUsed(Trick) = TimesUsed(Trick) + 1
-                msg = msg + " - " + LTRIM$(STR$(AddScore)) + " pts. "
-                if NumTricks > 1:
-                    msg = msg + " " + LTRIM$(STR$(NumTricks)) + " TRICK COMBO!!!"
-                RunReport$(TrickCounter) = msg
-                message LocateRow, msg, AnnounceFrames
-        END IF
-    
-    if SloMo:
-        FOR l = 1 TO 50
-            WAIT &H3DA, 8
-        NEXT l
-    END IF
-    
-TrickPointData:
-DATA 16       : #Total # of tricks
-DATA 100      : #Point worth of trick 1
-DATA 150      : #Point worth of trick 2
-DATA 125
-DATA 150
-DATA 250
-DATA 350
-DATA 200
-DATA 175
-DATA 200
-DATA 300
-DATA 330
-DATA 375
-DATA 75
-DATA 200
-DATA 100
-DATA 275
-
-
-    
-#==============================================================================
-#SUB DrawLevel
-#
-#==============================================================================
-def DrawLevel:
-    #TODO: Make this function take in a parameter. The parameter should be a Level object. The level should contain a list of ramps, and whatever else
-    FOR n = 1 TO NumRamps
-        sx = Ramp(n).x
-        sy = Ramp(n).y
-
-        ex = Ramp(n).x + Ramp(n).length * coss(360 - Ramp(n).incline)
-        ex2 = Ramp(n).x + Ramp(n).length * coss(Ramp(n).incline)
-        if n > 1:
-            ex22 = Ramp(n - 1).x + os + Ramp(n - 1).dist
-            ex22 = ex22 + Ramp(n - 1).length * coss(Ramp(n - 1).incline)
-        END IF
-        ey = Ramp(n).y + Ramp(n).length * sinn(360 - Ramp(n).incline)
-
-        if Track3D:
-            tw = 44         #track width
-            os = -5         #3d illusion offset
-        else:
-            tw = 0
-            os = 0
-        END IF
-
-        SELECT CASE n
-            CASE 1
-                #StandardY is a CONST.    Value is 315
-                LINE (0, StandardY - 10 - tw)-(Ramp(n).x, StandardY - 10 - tw), 7
-                LINE (0, StandardY - 10 + tw)-(Ramp(n).x + os, StandardY - 10 + tw), 7
-            CASE else:
-                LINE (ex22, StandardY - 10 - tw)-(Ramp(n).x, StandardY - 10 - tw)
-                LINE (ex22 + os, StandardY - 10 + tw)-(Ramp(n).x + os, StandardY - 10 + tw)
-                    if n = NumRamps:
-                        LINE (ex2 + Ramp(n).dist, StandardY - 10 - tw)-(639, StandardY - 10 - tw)
-                        LINE (ex2 + Ramp(n).dist, StandardY - 10 + tw)-(639, StandardY - 10 + tw)
-                    END IF
-        END SELECT
-
-        LINE (sx + os, sy + tw)-(ex + os, ey + tw)
-        LINE (sx + os + Ramp(n).dist, ey + tw)-(ex2 + os + Ramp(n).dist, sy + tw)
-
-        LINE (sx, sy - tw)-(ex, ey - tw)
-        LINE (sx + Ramp(n).dist, ey - tw)-(ex2 + Ramp(n).dist, sy - tw)
-
-        LINE (sx + os, sy + tw)-(sx, sy - tw)
-        LINE (ex + os, ey + tw)-(ex, ey - tw)
-        LINE (sx + os + Ramp(n).dist, ey + tw)-(sx + Ramp(n).dist, ey - tw)
-        LINE (ex2 + os + Ramp(n).dist, sy + tw)-(ex2 + Ramp(n).dist, sy - tw)
-
-        #PAINT (sx, sy), 6, 15
-        #PAINT (ex2 + Ramp(n).dist - 2, ey), 6, 15
-
-        #CIRCLE (sx, sy), 4, 4
-
-    NEXT n
-END SUB
-
-
-#==============================================================================
-#SUB DrawStatus
-#Display the status/score stuff on the screen
-#==============================================================================
-def DrawStatus:
-    LOCATE 1, 1
-    PRINT "Speed"
-    
-    l = 120
-    w = 4
-    by = 5
-    bx = 50
-    
-    LINE (bx - 1, by)-(bx + l + 1, by + w), BikeCol(1), B
-    LINE (bx, by + 1)-(bx + l * (Biker.xvel / Biker.maxspd), by + w - 1), BikeCol(2), BF
-    
-    LOCATE 1, 25: PRINT "Score: "; LTRIM$(STR$(gamestats.score))
-    LOCATE 1, 40: PRINT "Level "; LTRIM$(STR$(Level))
-    LOCATE 1, 50: PRINT "Score to beat = "; LTRIM$(STR$(ScoreToBeat(Level))); " pts."
-    #LOCATE 2, 1: PRINT FPS
-    END SUB
-
-
-#==============================================================================
-#SUB InitLevel (lev)
-#==============================================================================
-def InitLevel(lev):
-    # TODO perhaps move levels into text files? Or perhaps into a separate module?
-    # TODO convert to file i/o. Score-to-beat stuff should belong in a level object, perhaps
-    # TODO also, watch out for QBASIC 1-based stuff.. you were an amateur when you made this
-    RESTORE ScoresToBeat
-    for n = 1 TO FinalLevel
-        READ ScoreToBeat(n)  # TODO move ScoreToBeat into the level manager
-    NEXT n
-
-    z = -60        			#z offset: keep this around -50 or -60
-    AddScore = 0        	# AddScore appears to be the score? Belongs in a game stats class
-    Scale = 120         	# Scale is used in Rotate functions. May need to substitute a camera class?
-    LevelFinished = False  	# LevelFinished belongs in a game stats class or a level manager
-    CurRamp = 1         	# The current ramp in the level (this probably won't be necessary once we have legit collision detection
-    NumTricks = 0       	# Tracks how many tricks the player has performed (belongs in game stats class)
-    MsgFrames = 0       	# Used in messaging (how many frames to leave the message up for)
-    msg = ""           		# Used in messaging - the message text itself
-    InAir = 0           	# True if biker is in the air (after a jump)
-    TrickCounter = 0    	# Hmm, not sure how this differs from NumTricks. TODO read the code
-
-
-    x = 120                 # Bike position on screen
-    y = StandardY - 20 - 10
-
-    Txf = 0                 # Bike Euler angles TODO replace bike Eulers with rotation matrices
-    Txh = 0
-
-    Tyf = 0
-    Tyh = 0
-
-    Tzf = 0
-    Tzh = 0
-
-    # TODO make sure variable scoping is correct. You went through a pass of simply converting loose variables into object-oriented objects/members/etc
-    bike.reset()
-
-    Biker.xvel = 0
-    Biker.yvel = 0
-
-    SELECT CASE lev
-        CASE 1
-            NumRamps = 3
-
-            Ramp(1).x = 600
-            Ramp(1).y = StandardY - 10
-            Ramp(1).incline = 45
-            Ramp(1).length = 45
-            Ramp(1).dist = 220
-
-            Ramp(2).x = 1400
-            Ramp(2).y = StandardY - 10
-            Ramp(2).incline = 33
-            Ramp(2).length = 60
-            Ramp(2).dist = 220
-
-            Ramp(3).x = 2200
-            Ramp(3).y = StandardY - 10
-            Ramp(3).incline = 50
-            Ramp(3).length = 30
-            Ramp(3).dist = 220
-
-        CASE 2
-            NumRamps = 5
-
-            Ramp(1).x = 500
-            Ramp(1).y = StandardY - 10
-            Ramp(1).incline = 30
-            Ramp(1).length = 45
-            Ramp(1).dist = 200
-
-            Ramp(2).x = 1300
-            Ramp(2).y = StandardY - 10
-            Ramp(2).incline = 40
-            Ramp(2).length = 45
-            Ramp(2).dist = 250
-
-            Ramp(3).x = 2100
-            Ramp(3).y = StandardY - 10
-            Ramp(3).incline = 40
-            Ramp(3).length = 40
-            Ramp(3).dist = 170
-    
-            Ramp(4).x = 2900
-            Ramp(4).y = StandardY - 10
-            Ramp(4).incline = 30
-            Ramp(4).length = 45
-            Ramp(4).dist = 220
-            
-            Ramp(5).x = 3700
-            Ramp(5).y = StandardY - 10
-            Ramp(5).incline = 40
-            Ramp(5).length = 40
-            Ramp(5).dist = 150
-
-        CASE 3
-            NumRamps = 4
-    
-            Ramp(1).x = 540
-            Ramp(1).y = StandardY - 10
-            Ramp(1).incline = 25
-            Ramp(1).length = 35
-            Ramp(1).dist = 170
-     
-            Ramp(2).x = 1080
-            Ramp(2).y = StandardY - 10
-            Ramp(2).incline = 35
-            Ramp(2).length = 35
-            Ramp(2).dist = 170
-    
-            Ramp(3).x = 1620
-            Ramp(3).y = StandardY - 10
-            Ramp(3).incline = 45
-            Ramp(3).length = 35
-            Ramp(3).dist = 190
-    
-            Ramp(4).x = 2160
-            Ramp(4).y = StandardY - 10
-            Ramp(4).incline = 50
-            Ramp(4).length = 35
-            Ramp(4).dist = 210
-
-        CASE 4
-            NumRamps = 4
-     
-            Ramp(1).x = 600
-            Ramp(1).y = StandardY - 10
-            Ramp(1).incline = 45
-            Ramp(1).length = 35
-            Ramp(1).dist = 200
-    
-            Ramp(2).x = 1200
-            Ramp(2).y = StandardY - 10
-            Ramp(2).incline = 45
-            Ramp(2).length = 35
-            Ramp(2).dist = 200
-    
-            Ramp(3).x = 1800
-            Ramp(3).y = StandardY - 10
-            Ramp(3).incline = 45
-            Ramp(3).length = 35
-            Ramp(3).dist = 200
-    
-            Ramp(4).x = 2400
-            Ramp(4).y = StandardY - 10
-            Ramp(4).incline = 35
-            Ramp(4).length = 35
-            Ramp(4).dist = 200
-
-        CASE 5
-            NumRamps = 6
-    
-            Ramp(1).x = 600
-            Ramp(1).y = StandardY - 10
-            Ramp(1).incline = 35
-            Ramp(1).length = 35
-            Ramp(1).dist = 200
-    
-            Ramp(2).x = 1200
-            Ramp(2).y = StandardY - 10
-            Ramp(2).incline = 40
-            Ramp(2).length = 35
-            Ramp(2).dist = 200
-    
-            Ramp(3).x = 1800
-            Ramp(3).y = StandardY - 10
-            Ramp(3).incline = 35
-            Ramp(3).length = 35
-            Ramp(3).dist = 200
-    
-            Ramp(4).x = 2400
-            Ramp(4).y = StandardY - 10
-            Ramp(4).incline = 40
-            Ramp(4).length = 35
-            Ramp(4).dist = 200
-    
-            Ramp(5).x = 3000
-            Ramp(5).y = StandardY - 10
-            Ramp(5).incline = 35
-            Ramp(5).length = 35
-            Ramp(5).dist = 200
-    
-            Ramp(6).x = 3600
-            Ramp(6).y = StandardY - 10
-            Ramp(6).incline = 35
-            Ramp(6).length = 35
-            Ramp(6).dist = 200
-
-        CASE 6
-            NumRamps = 2
-    
-            Ramp(1).x = 600
-            Ramp(1).y = StandardY - 10
-            Ramp(1).incline = 55
-            Ramp(1).length = 35
-            Ramp(1).dist = 220
-    
-            Ramp(2).x = 1200
-            Ramp(2).y = StandardY - 10
-            Ramp(2).incline = 55
-            Ramp(2).length = 35
-            Ramp(2).dist = 220
-
-    END SELECT
-END SUB
-
-ScoresToBeat:
-DATA 1000     : #Score to beat for level 1
-DATA 1350     : #Score to beat for level 2
-DATA 1250
-DATA 1500
-DATA 1900
-DATA 1000
-
-
-
-#==============================================================================
-#SUB DoControls
-#Handle keyboard input
-#==============================================================================
-def DoControls:
-    # This will be the input handling function of the playing game state
-    # TODO pygame-ize this
-    a$ = INKEY$
-    
-    SELECT CASE a$
-    CASE "l", "L"
-        if InAir = 0:
-            Biker.xvel = Biker.xvel + Biker.pump
-            if Biker.xvel >= Biker.maxspd:
-                Biker.xvel = Biker.maxspd
-     
-    CASE "j"
-        if InAir AND not bike.tricking:
-            Trick = 1
-            bike.tricking = -1
-            NumTricks = NumTricks + 1
-            TrickCounter = TrickCounter + 1
-        END IF
-    
-    CASE "J"
-        if InAir AND not bike.tricking:
-            Trick = 2
-            bike.tricking = -1
-            NumTricks = NumTricks + 1
-            TrickCounter = TrickCounter + 1
-        END IF
-    
-    CASE "k"
-        if InAir AND not bike.tricking:
-            Trick = 3
-            bike.tricking = -1
-            MemAngle = Tyh
-            NumTricks = NumTricks + 1
-            TrickCounter = TrickCounter + 1
-        END IF
-    
-    CASE "K"
-        if InAir AND not bike.tricking:
-            Trick = 4
-            bike.tricking = -1
-            NumTricks = NumTricks + 1
-            TrickCounter = TrickCounter + 1
-        END IF
-    
-        CASE "i"
-        if InAir AND not bike.tricking:
-            Trick = 5
-            bike.tricking = -1
-            MemAngle = Tzf
-            NumTricks = NumTricks + 1
-            TrickCounter = TrickCounter + 1
-        END IF
-    
-    CASE "I"
-        if InAir AND not bike.tricking:
-            Trick = 16
-            bike.tricking = -1
-            MemAngle = Tzf
-            NumTricks = NumTricks + 1
-            TrickCounter = TrickCounter + 1
-        END IF
-    
-    CASE "u"
-        if InAir AND not bike.tricking:
-            Trick = 7
-            bike.tricking = -1
-            NumTricks = NumTricks + 1
-            TrickCounter = TrickCounter + 1
-        END IF
-    
-    CASE "U"
-        if InAir AND not bike.tricking:
-            Trick = 9
-            bike.tricking = -1
-            NumTricks = NumTricks + 1
-            TrickCounter = TrickCounter + 1
-        END IF
-    
-    CASE "o"
-        if InAir AND not bike.tricking: 
-            Trick = 8
-            bike.tricking = -1
-            NumTricks = NumTricks + 1
-            TrickCounter = TrickCounter + 1
-        END IF
-     
-    CASE "O"
-        if InAir AND not bike.tricking:
-            Trick = 10
-            bike.tricking = -1
-            MemAngle = Tzf
-            NumTricks = NumTricks + 1
-            TrickCounter = TrickCounter + 1
-        END IF
-    
-    CASE "h"
-        if InAir AND not bike.tricking:
-            Trick = 11
-            bike.tricking = -1
-            NumTricks = NumTricks + 1
-            MemAngle = Tzf
-            TrickCounter = TrickCounter + 1
-        END IF
-    
-    CASE "H"
-        if InAir AND not bike.tricking:
-            Trick = 12
-            bike.tricking = -1
-            NumTricks = NumTricks + 1
-            TrickCounter = TrickCounter + 1
-        END IF
-    
-    CASE "y"
-        if InAir AND not bike.tricking:
-            Trick = 13
-            bike.tricking = -1
-            NumTricks = NumTricks + 1
-            TrickCounter = TrickCounter + 1
-            MemAngle = Tzf
-        END IF
-    
-    CASE "Y"
-        if InAir AND not bike.tricking:
-            Trick = 14
-            bike.tricking = -1
-            NumTricks = NumTricks + 1
-            TrickCounter = TrickCounter + 1
-            MemAngle = Tzf
-        END IF
-    
-    CASE "n"
-        if InAir AND not bike.tricking:
-            MemAngle = Tzf
-            Trick = 15
-            bike.tricking = -1
-            NumTricks = NumTricks + 1
-            TrickCounter = TrickCounter + 1
-        END IF
-    
-    CASE "N"
-        if InAir AND not bike.tricking:
-            Trick = 6
-            bike.tricking = -1
-            MemAngle = Tzf
-            NumTricks = NumTricks + 1
-            TrickCounter = TrickCounter + 1
-        END IF
-    
-    
-    #Lean back
-    CASE "q"
-        if InAir AND not bike.tricking:
-            Tzf = Tzf - Biker.turn / 2
-            Tzh = Tzh - Biker.turn / 2
-    
-    #Lean forward
-    CASE "w"
-        if InAir AND not bike.tricking:
-            Tzf = Tzf + Biker.turn / 2
-            Tzh = Tzh + Biker.turn / 2
-    
-    CASE "p", "P"
-    if gamestats.paused == 0:
-        doMessage LocateRow, msg, MsgFrames
-        s$ = "-=* PHAT FREEZE FRAME SNAPSHOT *=-"
-        LOCATE 6, 41 - LEN(s$) / 2: PRINT s$
-        DrawLevel
-        bike.draw()
-        DrawStatus
-        PCOPY 1, 0: CLS
-        gamestats.paused = 1
-        WHILE INKEY$ = "": WEND
-        gamestats.paused = 0
-    END IF
-         
-    
-    CASE CHR$(27)
-        Quit = True
-        EXIT SUB
-    
-    END SELECT
 
 
 #==============================================================================
@@ -1106,182 +836,19 @@ def DoControls:
 #Returns a random phrase to describe you not clearing the jump (this is rare,
 #but it could happen)
 #==============================================================================
-def getDidNotClearJumpMsg():
+def getDidNotClearJumpMsg(rampCrashPhrases):
     p = int(random.random() * len(rampCrashPhrases)) + 1
     return rampCrashPhrases[p]
 
 
 #==============================================================================
-#FUNCTION LostLevel$
+#FUNCTION getLostLevelMsg()
 #==============================================================================
-def LostLevel$:
-    RESTORE failurePhrases
-    READ NumPhrases
-    RANDOMIZE TIMER
-    p = INT(RND * NumPhrases) + 1
-    
-    FOR n = 1 TO p
-        READ s$
-    NEXT n
-    
-    return s$
+def getLostLevelMsg(failurePhrases):
+    p = int(random.random() * len(failurePhrases)) + 1
+    return failurePhrases[p]
     
 
-#==============================================================================
-#SUB Move
-#==============================================================================
-# TODO move this into a bike update function
-def Move:
-    FOR n = 1 TO NumRamps
-        Ramp(n).x = Ramp(n).x - Biker.xvel
-    NEXT n
-
-    xAdd1 = Ramp(CurRamp).x + Ramp(CurRamp).dist
-    #CIRCLE (xAdd1, StandardY - 10), 3, 3
-  
-    if InAir:
-        y = y + Biker.yvel
-        Biker.yvel = Biker.yvel + 2.1
-    
-        if not bike.tricking :
-            Tzf = Tzf + 3: Tzh = Tzf
-            #if (Tzf - 360) MOD 360 > 10 : message 5, "Lean Back!!!", 1
-        END IF
-    
-        if Biker.yvel > 0 AND (BikePts2D(21).y > StandardY - 25 OR BarPts2D(17).y > StandardY - 25):
-            DidNotClearRamp = (BikePts2D(3).x < xAdd1)
-    
-            y = StandardY - 30
-            Biker.yvel = 0
-    
-            if bike.tricking OR DidNotClearRamp :
-                CLS
-                msg = "": MsgFrames = 0
-                if bike.tricking :
-                    message 12, getCrashedMsg(), 1
-                else:
-                    message 12, getDidNotClearJumpMsg(), 1
-                END IF
-    
-                message 14, "Press <Enter> to continue.", 1
-                bike.crashed = True
-                y = StandardY - 15
-    
-                if (Tyf + 180) MOD 360 >= 270 AND (Tyf + 180) MOD 360 <= 90 :
-                    Tzh = 180: Tzf = 180
-                else:
-                    Tzh = 0: Tzf = 0
-                END IF
-            
-                Txf = 70: Txh = 70
-    
-                CALL RotateBike(Txf, Tyf + 180, Tzf)
-                CALL RotateBar(Txh, Tyh + 180, Tzh)
-                DrawLevel
-                bike.draw()
-                PCOPY 1, 0: CLS
-                WHILE INKEY$ <> CHR$(13): WEND
-                Biker.xvel = 0
-                EXIT SUB
-            END IF
-    
-            if not bike.crashed:
-                CurRamp = CurRamp + 1
-    
-            InAir = 0
-            gamestats.score = gamestats.score + AddScore
-            NumTricks = 0
-            AddScore = 0
-            Tzf = 0
-            Tzh = 0
-            one = 15        #Tab stops
-    
-            if CurRamp > NumRamps:
-                CALL RotateBike(Txf, Tyf + 180, Tzf)
-                CALL RotateBar(Txh, Tyh + 180, Tzh)
-                DrawLevel
-                bike.draw()
-                DrawStatus
-                message 14, "Press <Enter> to continue.", 1
-    
-                if gamestats.score >= ScoreToBeat(Level) :
-                    LevelFinished = True
-                    message 10, getBeatLevelMsg(successPhrases), 1
-                    doMessage LocateRow, msg, MsgFrames
-    
-                else:
-    
-                    InitBike
-                    InitLevel(Level)
-                    message 10, LostLevel$, 1
-                    message LocateRow, STRING$(80, " "), 1
-                 
-                    #if Level <= FinalLevel :
-                    #    msg = "Level " + LTRIM$(STR$(Level))
-                    #    Message LocateRow, msg, INT(AnnounceFrames / 2)
-                    #END IF
-                
-                END IF
-    
-                PCOPY 1, 0: CLS
-                WHILE INKEY$ <> CHR$(13): WEND
-    
-                if DoRunSummary:
-                    if LevelFinished:
-                        RunSummary
-                    END IF
-                END IF
-    
-            END IF
-    END IF
-END SUB
-
-#==============================================================================
-#SUB RunSummary
-#==============================================================================
-# TODO this goes into the playing state, at the end of a run (when you finish a level (and maybe also when you crash?)
-def RunSummary:
-    range = 3
-    flag = 1
-    
-    DO
-        LOCATE 1, 1
-        PRINT STRING$(80, "-")
-        message 2, "Run Summary for Level " + LTRIM$(STR$(Level)), 1
-        LOCATE 4, 1: PRINT STRING$(80, "-")
-        message 6, "Biker: " + RiderName$, 1
-        LOCATE 7: PRINT STRING$(80, "-")
-        LOCATE 8, 1
-        FOR n = flag TO flag + range        #TrickCounter
-            PRINT TAB(3); LTRIM$(STR$(n));
-            PRINT TAB(10); RunReport$(n)
-        NEXT n
-        PRINT
-        PRINT STRING$(80, "-")
-        PRINT TAB(3); "Total: "; TAB(10); LTRIM$(STR$(gamestats.score)); " pts.";
-        PRINT TAB(30); "<I and K> scroll, <Enter> continues."
-        PRINT STRING$(80, "-")
-        
-        message 23, "Press <Enter> to continue.", 1
-        bike.draw()
-        DrawLevel
-        PCOPY 1, 0: CLS
-        
-        a$ = INKEY$
-        SELECT CASE UCASE$(a$)
-            CASE "I"
-                flag = flag - 1
-                if flag < 1 : flag = 1
-            CASE "K"
-                flag = flag + 1
-                if flag > TrickCounter - range : flag = TrickCounter - range
-            CASE CHR$(13)
-                EXIT SUB
-            END SELECT
-        
-    LOOP
-    #WHILE INKEY$ <> CHR$(13): WEND
-END SUB
 
 
 

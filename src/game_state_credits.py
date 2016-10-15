@@ -2,7 +2,7 @@
 #SUB Creditz
 #Displays the credits.  Spelled with a z.  Because that's how we roll.
 #==============================================================================
-def Creditz:
+def Creditz():
 # TODO: Make Creditz a game state (note that I did not convert it to a function ()). Then, main game can Transition into game state and whatever.
 
     lx = 80
@@ -77,12 +77,12 @@ def Creditz:
         message 2, "Trick Biker - Creditz", 1
         message 3, STRING$(80, "-"), 1
         
-        LRow = 12 - INT(NumLinesPerPage(flag) / 2)
+        LRow = 12 - int(NumLinesPerPage(flag) / 2)
         
         LOCATE LRow, 1
         
         FOR n = 0 TO NumLinesPerPage(flag) - 1
-            if n = 0:
+            if n == 0:
                 COLOR 14
             else:
                 COLOR 15

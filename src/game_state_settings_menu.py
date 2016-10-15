@@ -2,7 +2,7 @@
 #SUB OptionsMenu
 #==============================================================================
 # TODO make this its own game state
-def OptionsMenu:
+def OptionsMenu():
     CLS
     one = 20: two = 50
     max = 7
@@ -16,24 +16,24 @@ def OptionsMenu:
         
         
         LOCATE 5
-        if DrawPoints = -1 : Status$ = "On" else: Status$ = "Off"
+        if DrawPoints == -1 : Status$ = "On" else: Status$ = "Off"
         PRINT TAB(one); "Draw Debug Points"; TAB(two); Status$
         
         LOCATE 7
-        if Track3D = -1 : Status$ = "On" else: Status$ = "Off"
+        if Track3D == -1 : Status$ = "On" else: Status$ = "Off"
         PRINT TAB(one); "3D Track"; TAB(two); Status$
         
         LOCATE 9
-        if DoRunSummary = -1 : Status$ = "On" else: Status$ = "Off"
+        if DoRunSummary == -1 : Status$ = "On" else: Status$ = "Off"
         PRINT TAB(one); "Do Run Summary"; TAB(two); Status$
         
         LOCATE 11
-        if CrowdOn = -1 : Status$ = "On" else: Status$ = "Off"
+        if CrowdOn == -1 : Status$ = "On" else: Status$ = "Off"
         PRINT TAB(one); "Draw Crowd (not implemented)"; TAB(two); Status$
         
         # Note: row 13 is removed. It was Vsync, but we're not using that
         LOCATE 15
-        if SloMo = -1 : Status$ = "On" else: Status$ = "Off"
+        if SloMo == -1 : Status$ = "On" else: Status$ = "Off"
         PRINT TAB(one); "Slow-Motion Tricks"; TAB(two); Status$
         
         LOCATE 17
@@ -57,21 +57,21 @@ def OptionsMenu:
             CASE CHR$(13)
                 SELECT CASE flag
                     CASE 1
-                        if DrawPoints = 0 :
+                        if DrawPoints == 0 :
                             DrawPoints = -1
                         else:
                             DrawPoints = 0
                         END IF
                  
                     CASE 2
-                        if Track3D = 0 :
+                        if Track3D == 0 :
                             Track3D = -1
                         else:
                             Track3D = 0
                         END IF
                  
                     CASE 3
-                        if DoRunSummary = 0 :
+                        if DoRunSummary == 0 :
                             DoRunSummary = -1
                         else:
                             DoRunSummary = 0
@@ -79,7 +79,7 @@ def OptionsMenu:
                  
                     #Note: case 5 (vsync) was removed
                     CASE 6
-                        if SloMo = 0 :
+                        if SloMo == 0 :
                             SloMo = -1
                         else:
                             SloMo = 0

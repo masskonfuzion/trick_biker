@@ -1,7 +1,7 @@
 #==============================================================================
 #SUB Instructions
 #==============================================================================
-def Instructions:
+def Instructions():
     # TODO make this its own gamestate
     RESTORE InstructionsData
     READ Lines
