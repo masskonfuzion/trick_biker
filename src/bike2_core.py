@@ -8,7 +8,7 @@ import logging
 import math
 from pymkfgame.mkfmath import matrix
 from pymkfgame.mkfmath import vector
-from pymkfgame.mkfmath.common import DEGTORAD
+from pymkfgame.mkfmath.common import DEGTORAD, COSS, SINN
 from pymkfgame.collision import aabb
 from pymkfgame.gameobj.gameobj import GameObj
 
@@ -167,7 +167,8 @@ class Bike(GameObj):
             NOTE: This replaces QBASIC InitBike()
         """
         dirname = os.path.dirname( sys.argv[0] )
-        with open(os.path.normpath(dirname + "../data/bike_model.json", 'r')) as fd:
+        #print "dirname:{}".format("/".join((dirname, "../data/bike_model.json")))
+        with open(os.path.normpath("/".join((dirname, "../data/bike_model.json"))), 'r') as fd:
             raw_bike_model = json.load(fd)
         #logging.debug("raw_bike_model:{}".format(raw_bike_model))
 
@@ -232,7 +233,7 @@ class Bike(GameObj):
     def update(self, dt_s):
         # TODO add setting of transformations
         TODO = 1000
-        self.updateTransform(dt_s)
+        #self.updateTransform(dt_s) # TODO determine if we need this function. It updates the bike's transform; but do we need it?
         self.aabb.computeBounds(self.model) # TODO see aabb module for thoughts on computeBounds() vs update()
         self.updateTrick( TODO )    # Make sure updateTrick cals the proper functions to set the bike's transform
 
@@ -599,13 +600,13 @@ class LevelManager(object):
     #==============================================================================
     #SUB InitLevel (self.currentLevel)
     #==============================================================================
-    def InitLevel():
+    def InitLevel(self):
         # TODO perhaps move levels into text files? Or perhaps into a separate module?
         # TODO convert to file i/o. Score-to-beat stuff should belong in a level object, perhaps
         # TODO also, watch out for QBASIC 1-based stuff.. you were an amateur when you made this
         # TODO also, convert InitLevel to Python
 
-        del self.ramgs[:]
+        del self.ramps[:]
 
         Scale = 120         	    # Scale is used in Rotate functions. May need to substitute a camera class?
         self.levelFinished = False  # self.levelFinished belongs in a game stats class or a level manager
@@ -622,10 +623,9 @@ class LevelManager(object):
         z = -60        			    #z offset: keep this around -50 or -60
     
         # TODO make sure variable scoping is correct. You went through a pass of simply converting loose variables into object-oriented objects/members/etc
-        bike.reset()
-    
-        Biker.xvel = 0
-        Biker.yvel = 0
+        #bike.reset()   # TODO maybe take in a reference to the bike as a param?
+        #Biker.xvel = 0
+        #Biker.yvel = 0
     
         # TODO - populate self.ramps here. Make Pythonic
         if self.currentLevel == 1:
@@ -670,7 +670,7 @@ class LevelManager(object):
             self.ramps.append( RampType(x=1200, y=self.y_ground - 10, incline=55, length=35, dist=220) )
             self.scoreToBeat = 1000
     
-    def update(dt_s, bike):
+    def update(self, dt_s, bike):
         """ Update the level manager (e.g., things like curRamp and such)
 
             Note: This takes in the bike object so it can know the bike's position and track current ramp, and such.
@@ -683,48 +683,63 @@ class LevelManager(object):
     #SUB drawLevel
     #
     #==============================================================================
-    def drawLevel(self, screen):
+    def drawLevel(self, screen, stats_and_configs):
         #TODO: Make this function take in a parameter. The parameter should be a Level object. The level should contain a list of ramps, and whatever else
         for n in range(0, len(self.ramps)):
-            sx = self.ramps[n].x
-            sy = self.ramps[n].y
-    
-            ex = self.ramps[n].x + self.ramps[n].length * coss(360 - self.ramps[n].incline)
-            ex2 = self.ramps[n].x + self.ramps[n].length * coss(self.ramps[n].incline)
-            if n > 1:
-                ex22 = Ramp(n - 1).x + os + Ramp(n - 1).dist
-                ex22 = ex22 + Ramp(n - 1).length * coss(Ramp(n - 1).incline)
-            ey = self.ramps[n].y + self.ramps[n].length * sinn(360 - self.ramps[n].incline)
-    
-            if Track3D:
-                tw = 44         #track width (an offset to give the illusion of 3D)
-                os = -5         #3d illusion offset
-            else:
-                tw = 0
-                os = 0
-    
-            if n == 1:
-                pygame.draw.line(screen, (192, 192, 192), (0, self.y_ground - 10 - tw), (self.ramps[n].x, self.y_ground - 10 - tw))
-                pygame.draw.line(screen, (192, 192, 192), (0, self.y_ground - 10 + tw), (self.ramps[n].x + os, self.y_ground - 10 + tw))
+            launch_sx = self.ramps[n].x
+            launch_sy = self.ramps[n].y
 
-            else:
-                pygame.draw.line(screen, (192, 192, 192), (ex22, self.y_ground - 10 - tw), (self.ramps[n].x, self.y_ground - 10 - tw)) 
-                pygame.draw.line(screen, (192, 192, 192), (ex22 + os, self.y_ground - 10 + tw), (self.ramps[n].x + os, self.y_ground - 10 + tw))
+            launch_ex = self.ramps[n].x + self.ramps[n].length * COSS[self.ramps[n].incline]
+            launch_ey = self.ramps[n].y + self.ramps[n].length * SINN[self.ramps[n].incline]
 
-                if n == self.levelMgr.numRamps:
-                    pygame.draw.line(screen, (192, 192, 192), (ex2 + self.ramps[n].dist, self.y_ground - 10 - tw), (639, self.y_ground - 10 - tw))
-                    pygame.draw.line(screen, (192, 192, 192), (ex2 + self.ramps[n].dist, self.y_ground - 10 + tw), (639, self.y_ground - 10 + tw))
+            land_ex = launch_ex + self.ramps[n].dist
+            land_ey = self.ramps[n].y + SINN[self.ramps[n].incline]
+
+            land_sx = land_ex + COSS[self.ramps[n].incline]
+            land_sy = self.ramps[n].y
+
+            pygame.draw.line(screen, (192, 192, 192), (launch_sy, launch_sy), (launch_ex, launch_ey))
+            pygame.draw.line(screen, (192, 192, 192), (land_sy, land_sy), (land_ex, land_ey))
+
+            #sx = self.ramps[n].x
+            #sy = self.ramps[n].y
     
-            pygame.draw.line(screen, (192, 192, 192), (sx + os, sy + tw), (ex + os, ey + tw))
-            pygame.draw.line(screen, (192, 192, 192), (sx + os + self.ramps[n].dist, ey + tw), (ex2 + os + self.ramps[n].dist, sy + tw))
+            #ex = self.ramps[n].x + self.ramps[n].length * COSS[360 - self.ramps[n].incline]
+            #ex2 = self.ramps[n].x + self.ramps[n].length * COSS[self.ramps[n].incline]
+            #if n > 1:
+            #    ex22 = self.ramps[n - 1].x + illusion_offset + self.ramps[n - 1].dist
+            #    ex22 = ex22 + self.ramps[n - 1].length * COSS[self.ramps[n - 1].incline]
+            #ey = self.ramps[n].y + self.ramps[n].length * SINN[360 - self.ramps[n].incline]
     
-            pygame.draw.line(screen, (192, 192, 192), (sx, sy - tw), (ex, ey - tw))
-            pygame.draw.line(screen, (192, 192, 192), (sx + self.ramps[n].dist, ey - tw), (ex2 + self.ramps[n].dist, sy - tw))
+            #if stats_and_configs.track3d:
+            #    tw = 44         #track width (an offset to give the illusion of 3D)
+            #    illusion_offset = -5         #3d illusion offset
+            #else:
+            #    tw = 0
+            #    illusion_offset = 0
     
-            pygame.draw.line(screen, (192, 192, 192), (sx + os, sy + tw), (sx, sy - tw))
-            pygame.draw.line(screen, (192, 192, 192), (ex + os, ey + tw), (ex, ey - tw))
-            pygame.draw.line(screen, (192, 192, 192), (sx + os + self.ramps[n].dist, ey + tw), (sx + self.ramps[n].dist, ey - tw))
-            pygame.draw.line(screen, (192, 192, 192), (ex2 + os + self.ramps[n].dist, sy + tw), (ex2 + self.ramps[n].dist, sy - tw))
+            #if n == 1:
+            #    pygame.draw.line(screen, (192, 192, 192), (0, self.y_ground - 10 - tw), (self.ramps[n].x, self.y_ground - 10 - tw))
+            #    pygame.draw.line(screen, (192, 192, 192), (0, self.y_ground - 10 + tw), (self.ramps[n].x + illusion_offset, self.y_ground - 10 + tw))
+
+            #else:
+            #    pygame.draw.line(screen, (192, 192, 192), (ex22, self.y_ground - 10 - tw), (self.ramps[n].x, self.y_ground - 10 - tw)) 
+            #    pygame.draw.line(screen, (192, 192, 192), (ex22 + illusion_offset, self.y_ground - 10 + tw), (self.ramps[n].x + illusion_offset, self.y_ground - 10 + tw))
+
+            #    if n == self.levelMgr.numRamps:
+            #        pygame.draw.line(screen, (192, 192, 192), (ex2 + self.ramps[n].dist, self.y_ground - 10 - tw), (639, self.y_ground - 10 - tw))
+            #        pygame.draw.line(screen, (192, 192, 192), (ex2 + self.ramps[n].dist, self.y_ground - 10 + tw), (639, self.y_ground - 10 + tw))
+    
+            #pygame.draw.line(screen, (192, 192, 192), (sx + illusion_offset, sy + tw), (ex + illusion_offset, ey + tw))
+            #pygame.draw.line(screen, (192, 192, 192), (sx + illusion_offset + self.ramps[n].dist, ey + tw), (ex2 + illusion_offset + self.ramps[n].dist, sy + tw))
+    
+            #pygame.draw.line(screen, (192, 192, 192), (sx, sy - tw), (ex, ey - tw))
+            #pygame.draw.line(screen, (192, 192, 192), (sx + self.ramps[n].dist, ey - tw), (ex2 + self.ramps[n].dist, sy - tw))
+    
+            #pygame.draw.line(screen, (192, 192, 192), (sx + illusion_offset, sy + tw), (sx, sy - tw))
+            #pygame.draw.line(screen, (192, 192, 192), (ex + illusion_offset, ey + tw), (ex, ey - tw))
+            #pygame.draw.line(screen, (192, 192, 192), (sx + illusion_offset + self.ramps[n].dist, ey + tw), (sx + self.ramps[n].dist, ey - tw))
+            #pygame.draw.line(screen, (192, 192, 192), (ex2 + illusion_offset + self.ramps[n].dist, sy + tw), (ex2 + self.ramps[n].dist, sy - tw))
     
             #PAINT (sx, sy), 6, 15
             #PAINT (ex2 + self.ramps[n].dist - 2, ey), 6, 15

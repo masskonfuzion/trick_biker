@@ -232,6 +232,7 @@ class GameplayStats(object):
     ##            END SELECT
     ##        
     ##    LOOP
+#==============================================================================
 
 class GameStateImpl(GameStateBase):
     __instance = None
@@ -266,6 +267,7 @@ class GameStateImpl(GameStateBase):
         self.gamestats = GameplayStats()  # TODO make sure variable scoping and/or function parameters are straight
 
         self.substate = PlayingSubstate()
+        self.substate = PlayingSubstate.startlevel  # TODO decide if you prefer to have an object with constructor/methods/etc
         self.appRef = appRef
         self.kbStateMgr = KeyboardStateManager()
 
@@ -382,6 +384,9 @@ class GameStateImpl(GameStateBase):
         if self.substate == PlayingSubstate.startlevel:
             # Initialize bike
             self.bike.Init()    # TODO move this out of update()? I'm not sure I like having it here
+            self.bike.position = Point3D(320, 200, 0)       # TODO make a function that synchronizes bike position with bike model position
+            self.bike.model.position = Point3D(320, 200, 0) # Also TODO: do camera/projection model view
+
 
             # Display level start message
             self.levelMgr.currentLevel = 1   # TODO don't hardcode the level here. Set self.levelMgr.currentLevel = 1 at game init, then increment
@@ -447,10 +452,11 @@ class GameStateImpl(GameStateBase):
 
                         self.bike.model.children['frame'].matRot = matrix.mMultmat( matrix.Matrix.matRotZ(self.bike.model.children['frame'].thz), matrix.Matrix.matRotY(self.bike.model.children['frame'].thy)  )
                         self.bike.model.children['frame'].matRot = matrix.mMultmat( self.bike.model.children['frame'].matRot, matrix.Matrix.matRotX(self.bike.model.children['frame'].thx) )
+
                         # Note: There has to be a better way to access vars and functions.. These lines of code are super long...
 
-                        self.levelMgr.drawLevel()
-                        self.bike.draw()
+                        self.levelMgr.drawLevel(screen, self.gamestats)
+                        self.bike.draw(screen)
 
                         #PCOPY 1, 0: CLS
                         #WHILE INKEY$ <> CHR$(13): WEND
@@ -546,7 +552,7 @@ class GameStateImpl(GameStateBase):
         # TODO put in fixed timestep updating / some time of timer class. We want to update every cycle, but only draw when it's time to. Something like: if timer.timeToDraw: draw it else: return
         self.appRef.surface_bg.fill((0,0,0))
 
-        self.levelMgr.drawLevel(self.appRef.surface_bg)
+        self.levelMgr.drawLevel(self.appRef.surface_bg, self.gamestats)
         self.bike.draw(self.appRef.surface_bg)
 
     def PostRenderScene(self):
@@ -770,10 +776,11 @@ class GameStateImpl(GameStateBase):
             return
     
         # TODO List of Ramp objects should belong to the Level object (also TODO: make a Level object :-D)
-        ex = self.levelMgr.ramps[n].x + self.levelMgr.ramps[n].length * coss(360 - self.levelMgr.ramps[n].incline)
-        ey = self.levelMgr.ramps[n].y + self.levelMgr.ramps[n].length * sinn(360 - self.levelMgr.ramps[n].incline)
+        ex = self.levelMgr.ramps[n].x + self.levelMgr.ramps[n].length * COSS[360 - self.levelMgr.ramps[n].incline]
+        ey = self.levelMgr.ramps[n].y + self.levelMgr.ramps[n].length * SINN[360 - self.levelMgr.ramps[n].incline]
     
-        if self.levelMgr.ramps[n].x <= BarPts2D(5).x:  # TODO don't hardcode points.. Use references
+        #if self.levelMgr.ramps[n].x <= BarPts2D(5).x:  # TODO don't hardcode points.. Use references
+        if self.bike.aabb._maxPt[0] > self.levelMgr.ramps[n].x: # remember, _maxPts is a tuple, with no .x, .y, or .z attributes
             self.bike.model.children['frame'].thz = 360 - self.levelMgr.ramps[n].incline # TODO compose rotation matrices. i.e. the bike as a whole will have its own rotation matrix; then, the handlebars will have a matrix, and so will the frame. (And also tires, eventually)
             self.bike.model.children['handlebar'].thz = self.bike.model.children['frame'].thz
     
