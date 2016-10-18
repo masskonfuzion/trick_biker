@@ -684,22 +684,26 @@ class LevelManager(object):
     #
     #==============================================================================
     def drawLevel(self, screen, stats_and_configs):
-        #TODO: Make this function take in a parameter. The parameter should be a Level object. The level should contain a list of ramps, and whatever else
+        # TODO maybe come back and optimize performance here? (reduce # of floating pt operations?)
         for n in range(0, len(self.ramps)):
+            ramp_length = self.ramps[n].length * COSS[self.ramps[n].incline]
+            ramp_height = self.ramps[n].length * SINN[self.ramps[n].incline]
+            ramp_gap = self.ramps[n].dist
+
             launch_sx = self.ramps[n].x
             launch_sy = self.ramps[n].y
 
-            launch_ex = self.ramps[n].x + self.ramps[n].length * COSS[self.ramps[n].incline]
-            launch_ey = self.ramps[n].y + self.ramps[n].length * SINN[self.ramps[n].incline]
+            launch_ex = self.ramps[n].x + ramp_length
+            launch_ey = self.ramps[n].y + ramp_height
 
-            land_ex = launch_ex + self.ramps[n].dist
-            land_ey = self.ramps[n].y + SINN[self.ramps[n].incline]
+            land_ex = launch_ex + ramp_gap
+            land_ey = launch_ey
 
-            land_sx = land_ex + COSS[self.ramps[n].incline]
+            land_sx = land_ex + ramp_length
             land_sy = self.ramps[n].y
 
-            pygame.draw.line(screen, (192, 192, 192), (launch_sy, launch_sy), (launch_ex, launch_ey))
-            pygame.draw.line(screen, (192, 192, 192), (land_sy, land_sy), (land_ex, land_ey))
+            pygame.draw.line(screen, (192, 192, 192), (launch_sx, launch_sy), (launch_ex, launch_ey))
+            pygame.draw.line(screen, (192, 192, 192), (land_sx, land_sy), (land_ex, land_ey))
 
             #sx = self.ramps[n].x
             #sy = self.ramps[n].y
