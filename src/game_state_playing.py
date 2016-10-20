@@ -2,6 +2,7 @@ from pymkfgame.core.message_queue import MessageQueue
 from pymkfgame.display_msg.display_msg import DisplayMessage
 from pymkfgame.display_msg.display_msg_manager import DisplayMessageManager
 from pymkfgame.core.game_state_base import GameStateBase
+from pymkfgame.mkfmath.common import DEGTORAD, COSS, SINN
 
 from bike2_core import *
 
@@ -340,14 +341,9 @@ class GameStateImpl(GameStateBase):
             if event.type == pygame.QUIT:
                 # Create a quit request message to the application, to shut itself down. This allows the program to do any necessary cleanup before exiting
                 self.EnqueueApplicationQuitMessage()
-            if event.type == pygame.KEYDOWN:
-                if event.key in self.kbStateMgr.trickModifierKeys:
-                    self.kbStateMgr.trickModifier = True
+            if event.type in [pygame.KEYDOWN, pygame.KEYUP]:
                 self.doControls(event)
 
-            elif event.type == pygame.KEYUP:
-                if event.key in self.kbStateMgr.trickModifierKeys:
-                    self.kbStateMgr.trickModifier = False
 
     def ProcessCommands(self):
         # TODO maybe put this command extraction logic into a function at the application class level (or base gamestate level). We're reusing the logic in every gamestate instance
@@ -384,8 +380,13 @@ class GameStateImpl(GameStateBase):
         if self.substate == PlayingSubstate.startlevel:
             # Initialize bike
             self.bike.Init()    # TODO move this out of update()? I'm not sure I like having it here
-            self.bike.position = Point3D(320, 200, 0)       # TODO make a function that synchronizes bike position with bike model position
-            self.bike.model.position = Point3D(320, 200, 0) # Also TODO: do camera/projection model view
+            self.bike.position = Point3D(320, self.levelMgr.y_ground, 0)        # TODO make a function that synchronizes bike position with bike model position
+            self.bike.model.position = Point3D(320, self.levelMgr.y_ground, 0)  # Also TODO: do camera/projection model view
+
+            self.rider.maxspd = 17 # TODO don't hardcode biker abilities
+            self.rider.pump = 2.3 # TODO don't hardcode biker abilities
+            self.rider.jump = 3.0 # TODO don't hardcode biker abilities
+            self.rider.turn = 45 # TODO don't hardcode biker abilities
 
 
             # Display level start message
@@ -463,7 +464,7 @@ class GameStateImpl(GameStateBase):
                         self.rider.xvel = 0
             
                     if not bike.crashed:
-                        self.levelMgr.curRamp = self.levelMgr.curRamp + 1
+                        self.levelMgr.curRamp = self.levelMgr.curRamp + 1   # TODO manager curRamp better. Maybe take a BSP-type approach? i.e, look at all ramps, but only process a ramp is the bike's x pos < ramp's x pos
                     # NOTE the following substate change logic could just as easily go into a function (and maybe should?)
                     else:
                         self.substate = PlayingSubstate.crashed
@@ -486,7 +487,7 @@ class GameStateImpl(GameStateBase):
                     ##self.drawStatus
                     self.staticMsg['presskey'].changeText("Press <Enter> to continue.")
             
-                    if gamestats.score >= ScoreToBeat(self.levelMgr.currentLevel) :
+                    if self.gamestats.score >= ScoreToBeat(self.levelMgr.currentLevel) :
                         self.levelManager.levelFinished = True  # TODO evaluate whether this flag is necessary. If we need to stay in the level state for a while, then keep it. But if it makes more sense to increment the level counter here, and go to a new substate, then do that
                         # TODO as always, look at what function is being called here
                         self.staticMsg['info'].changeText(getBeatLevelMsg(self.gamestats.successPhrases))
@@ -609,10 +610,10 @@ class GameStateImpl(GameStateBase):
 # PlayingState-specific helper functions
 
 #==============================================================================
-#SUB DoControls
+#SUB doControls
 #Handle keyboard input
 #==============================================================================
-    def DoControls(self, event):
+    def doControls(self, event):
         # This will be the input handling function of the playing game state
         
         #CASE "p", "P"
@@ -634,136 +635,152 @@ class GameStateImpl(GameStateBase):
         #    Quit = True
         #    EXIT SUB
 
-        if event.key == pygame.K_l:
-            if not self.bike.inAir:
-                self.rider.xvel = self.rider.xvel + self.rider.pump
-                if self.rider.xvel >= self.rider.maxspd:
-                    self.rider.xvel = self.rider.maxspd
-         
-        elif self.bike.inAir and not bike.tricking:
-            if event.key == pygame.K_j:
-                if self.kbStateMgr.trickModifier:
-                    self.gamestats.activeTrick = 2   # Note: self.gamestats.activeTrick is the trick identifier (selects which trick animation to play)
-                    bike.tricking = -1
-                    self.gamestats.numTricks += 1
-                    TrickCounter = TrickCounter + 1
-        
-                else:
-                    self.gamestats.activeTrick = 1
-                    bike.tricking = -1
-                    self.gamestats.numTricks += 1
-                    TrickCounter = TrickCounter + 1
-        
-            elif event.key == pygame.K_k:
-                if self.kbStateMgr.trickModifier:
-                    self.gamestats.activeTrick = 4
-                    bike.tricking = -1
-                    self.gamestats.numTricks += 1
-                    TrickCounter = TrickCounter + 1
-        
-                else:
-                    self.gamestats.activeTrick = 3
-                    bike.tricking = -1
-                    MemAngle = self.bike.model.children['handlebar'].thy
-                    self.gamestats.numTricks += 1
-                    TrickCounter = TrickCounter + 1
-        
-            elif event.key == pygame.K_i:
-                if self.kbStateMgr.trickModifier:
-                    self.gamestats.activeTrick = 16
-                    bike.tricking = -1
-                    MemAngle = self.bike.model.children['frame'].thz
-                    self.gamestats.numTricks += 1
-                    TrickCounter = TrickCounter + 1
+        # TODO revisit the logic here
+        if event.type == pygame.KEYDOWN:
+            if event.key in self.kbStateMgr.trickModifierKeys:
+                self.kbStateMgr.trickModifier = True
 
-                else:
-                    self.gamestats.activeTrick = 5
-                    bike.tricking = -1
-                    MemAngle = self.bike.model.children['frame'].thz
-                    self.gamestats.numTricks += 1
-                    TrickCounter = TrickCounter + 1
-        
-            elif event.key == pygame.K_u:
-                if self.kbStateMgr.trickModifier:
-                    self.gamestats.activeTrick = 9
-                    bike.tricking = -1
-                    self.gamestats.numTricks += 1
-                    TrickCounter = TrickCounter + 1
-        
-                else:
-                    self.gamestats.activeTrick = 7
-                    bike.tricking = -1
-                    self.gamestats.numTricks += 1
-                    TrickCounter = TrickCounter + 1
+            if event.key == pygame.K_l:
+                if not self.bike.inAir:
+                    self.rider.xvel = self.rider.xvel + self.rider.pump
+                    #if self.rider.xvel >= self.rider.maxspd:
+                    #    self.rider.xvel = self.rider.maxspd
+             
+                    self.bike.velocity[0] += self.rider.pump
+                    if self.bike.velocity[1] >= self.rider.maxspd:
+                        self.bike.velocity[0] = self.rider.maxspd
+
+            elif self.bike.inAir and not bike.tricking:
+                if event.key == pygame.K_j:
+                    if self.kbStateMgr.trickModifier:
+                        self.gamestats.activeTrick = 2   # Note: self.gamestats.activeTrick is the trick identifier (selects which trick animation to play)
+                        bike.tricking = -1
+                        self.gamestats.numTricks += 1
+                        TrickCounter = TrickCounter + 1
             
-            elif event.key == pygame.K_o:
-                if self.kbStateMgr.trickModifier:
-                    self.gamestats.activeTrick = 10
-                    bike.tricking = -1
-                    MemAngle = self.bike.model.children['frame'].thz
-                    self.gamestats.numTricks += 1
-                    TrickCounter = TrickCounter + 1
-        
-                else: 
-                    self.gamestats.activeTrick = 8
-                    bike.tricking = -1
-                    self.gamestats.numTricks += 1
-                    TrickCounter = TrickCounter + 1
-         
-            elif event.key == pygame.K_h:
-                if self.kbStateMgr.trickModifier:
-                    self.gamestats.activeTrick = 12
-                    bike.tricking = -1
-                    self.gamestats.numTricks += 1
-                    TrickCounter = TrickCounter + 1
-        
-                else:
-                    self.gamestats.activeTrick = 11
-                    bike.tricking = -1
-                    self.gamestats.numTricks += 1
-                    MemAngle = self.bike.model.children['frame'].thz
-                    TrickCounter = TrickCounter + 1
-        
-            elif event.key == pygame.K_y:
-                if self.kbStateMgr.trickModifier:
-                    self.gamestats.activeTrick = 14
-                    bike.tricking = -1
-                    self.gamestats.numTricks += 1
-                    TrickCounter = TrickCounter + 1
-                    MemAngle = self.bike.model.children['frame'].thz
-        
-                else: 
-                    self.gamestats.activeTrick = 13
-                    bike.tricking = -1
-                    self.gamestats.numTricks += 1
-                    TrickCounter = TrickCounter + 1
-                    MemAngle = self.bike.model.children['frame'].thz
-        
-            elif event.key == pygame.K_n:
-                if self.kbStateMgr.trickModifier:
-                    MemAngle = self.bike.model.children['frame'].thz
-                    self.gamestats.activeTrick = 15
-                    bike.tricking = -1
-                    self.gamestats.numTricks += 1
-                    TrickCounter = TrickCounter + 1
-        
-                else:
-                    self.gamestats.activeTrick = 6
-                    bike.tricking = -1
-                    MemAngle = self.bike.model.children['frame'].thz
-                    self.gamestats.numTricks += 1
-                    TrickCounter = TrickCounter + 1
-        
-        
-            #Lean back
-            elif event.key == pygame.K_q:
-                self.bike.model.children['frame'].thz = self.bike.model.children['frame'].thz - self.rider.turn / 2
-                self.bike.model.children['handlebar'].thz = self.bike.model.children['handlebar'].thz - self.rider.turn / 2
+                    else:
+                        self.gamestats.activeTrick = 1
+                        bike.tricking = -1
+                        self.gamestats.numTricks += 1
+                        TrickCounter = TrickCounter + 1
             
-            #Lean forward
-            elif event.key == pygame.K_w:
-                self.bike.model.children['frame'].thz = self.bike.model.children['frame'].thz + self.rider.turn / 2
-                self.bike.model.children['handlebar'].thz = self.bike.model.children['handlebar'].thz + self.rider.turn / 2
+                elif event.key == pygame.K_k:
+                    if self.kbStateMgr.trickModifier:
+                        self.gamestats.activeTrick = 4
+                        bike.tricking = -1
+                        self.gamestats.numTricks += 1
+                        TrickCounter = TrickCounter + 1
+            
+                    else:
+                        self.gamestats.activeTrick = 3
+                        bike.tricking = -1
+                        MemAngle = self.bike.model.children['handlebar'].thy
+                        self.gamestats.numTricks += 1
+                        TrickCounter = TrickCounter + 1
+            
+                elif event.key == pygame.K_i:
+                    if self.kbStateMgr.trickModifier:
+                        self.gamestats.activeTrick = 16
+                        bike.tricking = -1
+                        MemAngle = self.bike.model.children['frame'].thz
+                        self.gamestats.numTricks += 1
+                        TrickCounter = TrickCounter + 1
+
+                    else:
+                        self.gamestats.activeTrick = 5
+                        bike.tricking = -1
+                        MemAngle = self.bike.model.children['frame'].thz
+                        self.gamestats.numTricks += 1
+                        TrickCounter = TrickCounter + 1
+            
+                elif event.key == pygame.K_u:
+                    if self.kbStateMgr.trickModifier:
+                        self.gamestats.activeTrick = 9
+                        bike.tricking = -1
+                        self.gamestats.numTricks += 1
+                        TrickCounter = TrickCounter + 1
+            
+                    else:
+                        self.gamestats.activeTrick = 7
+                        bike.tricking = -1
+                        self.gamestats.numTricks += 1
+                        TrickCounter = TrickCounter + 1
+                
+                elif event.key == pygame.K_o:
+                    if self.kbStateMgr.trickModifier:
+                        self.gamestats.activeTrick = 10
+                        bike.tricking = -1
+                        MemAngle = self.bike.model.children['frame'].thz
+                        self.gamestats.numTricks += 1
+                        TrickCounter = TrickCounter + 1
+            
+                    else: 
+                        self.gamestats.activeTrick = 8
+                        bike.tricking = -1
+                        self.gamestats.numTricks += 1
+                        TrickCounter = TrickCounter + 1
+             
+                elif event.key == pygame.K_h:
+                    if self.kbStateMgr.trickModifier:
+                        self.gamestats.activeTrick = 12
+                        bike.tricking = -1
+                        self.gamestats.numTricks += 1
+                        TrickCounter = TrickCounter + 1
+            
+                    else:
+                        self.gamestats.activeTrick = 11
+                        bike.tricking = -1
+                        self.gamestats.numTricks += 1
+                        MemAngle = self.bike.model.children['frame'].thz
+                        TrickCounter = TrickCounter + 1
+            
+                elif event.key == pygame.K_y:
+                    if self.kbStateMgr.trickModifier:
+                        self.gamestats.activeTrick = 14
+                        bike.tricking = -1
+                        self.gamestats.numTricks += 1
+                        TrickCounter = TrickCounter + 1
+                        MemAngle = self.bike.model.children['frame'].thz
+            
+                    else: 
+                        self.gamestats.activeTrick = 13
+                        bike.tricking = -1
+                        self.gamestats.numTricks += 1
+                        TrickCounter = TrickCounter + 1
+                        MemAngle = self.bike.model.children['frame'].thz
+            
+                elif event.key == pygame.K_n:
+                    if self.kbStateMgr.trickModifier:
+                        MemAngle = self.bike.model.children['frame'].thz
+                        self.gamestats.activeTrick = 15
+                        bike.tricking = -1
+                        self.gamestats.numTricks += 1
+                        TrickCounter = TrickCounter + 1
+            
+                    else:
+                        self.gamestats.activeTrick = 6
+                        bike.tricking = -1
+                        MemAngle = self.bike.model.children['frame'].thz
+                        self.gamestats.numTricks += 1
+                        TrickCounter = TrickCounter + 1
+            
+            
+                #Lean back
+                elif event.key == pygame.K_q:
+                    self.bike.model.children['frame'].thz = self.bike.model.children['frame'].thz - self.rider.turn / 2
+                    self.bike.model.children['handlebar'].thz = self.bike.model.children['handlebar'].thz - self.rider.turn / 2
+                
+                #Lean forward
+                elif event.key == pygame.K_w:
+                    self.bike.model.children['frame'].thz = self.bike.model.children['frame'].thz + self.rider.turn / 2
+                    self.bike.model.children['handlebar'].thz = self.bike.model.children['handlebar'].thz + self.rider.turn / 2
+                pass
+
+        elif event.type == pygame.KEYUP:
+            if event.key in self.kbStateMgr.trickModifierKeys:
+                self.kbStateMgr.trickModifier = False
+
+
         
     #==============================================================================
     #SUB checkRamp ()
@@ -776,17 +793,18 @@ class GameStateImpl(GameStateBase):
             return
     
         # TODO List of Ramp objects should belong to the Level object (also TODO: make a Level object :-D)
+        sx = self.levelMgr.ramps[n].x
+        sy = self.levelMgr.ramps[n].y
         ex = self.levelMgr.ramps[n].x + self.levelMgr.ramps[n].length * COSS[360 - self.levelMgr.ramps[n].incline]
         ey = self.levelMgr.ramps[n].y + self.levelMgr.ramps[n].length * SINN[360 - self.levelMgr.ramps[n].incline]
     
         #if self.levelMgr.ramps[n].x <= BarPts2D(5).x:  # TODO don't hardcode points.. Use references
-        if self.bike.aabb._maxPt[0] > self.levelMgr.ramps[n].x: # remember, _maxPts is a tuple, with no .x, .y, or .z attributes
-            self.bike.model.children['frame'].thz = 360 - self.levelMgr.ramps[n].incline # TODO compose rotation matrices. i.e. the bike as a whole will have its own rotation matrix; then, the handlebars will have a matrix, and so will the frame. (And also tires, eventually)
-            self.bike.model.children['handlebar'].thz = self.bike.model.children['frame'].thz
+        #if self.bike.aabb._maxPt[0] > self.levelMgr.ramps[n].x: # remember, _maxPts is a tuple, with no .x, .y, or .z attributes
+        if self.bike.aabb._maxPt[0] > sx: # remember, _maxPts is a tuple, with no .x, .y, or .z attributes
+            self.bike.model.thz = 360 - self.levelMgr.ramps[n].incline # set the top-level rotation angle (which will be processed when we need to know where points are, for drawing/colliding)
     
-            self.rider.yvel = self.rider.jump * (self.rider.xvel * sinn(self.bike.model.children['frame'].thz)) + 2.25    #1.5707 # TODO do better math than this. You came up with these numbers just through trial and error.. what looked good
-            self.rider.xvel = self.rider.xvel * coss(self.bike.model.children['frame'].thz)
-    
+            self.bike.velocity[1] = self.rider.jump * (self.bike.velocity[0] * SINN[self.bike.model.thz]) + 2.25    #1.5707 # TODO do better math than this. You came up with these numbers just through trial and error.. what looked good
+            self.bike.velocity[0] = self.bike.velocity[0] * COSS[self.bike.model.thz]
             y = ey - 18 # TODO: Fix. Don't hardcode bike's y-position when jumping. Use collision detection, or otherwise math formulas to determine the bike's position on the ramp
     
             self.bike.inAir = True

@@ -31,9 +31,14 @@ class Point3D(object):
             return self.z
 
 
-    def __setitem__(self, index):
-        ## set item property
-        pass
+    def __setitem__(self, index, value):
+        # NOTE: This is hackeration and is kinda ugly. But it works (unless you give bad input, e.g., an index < 0 or index > 2
+        if index == 0:
+            self.x = value
+        elif index == 1:
+            self.y = value
+        elif index == 2:
+            self.z = value
 
 
 #==============================================================================
@@ -232,8 +237,9 @@ class Bike(GameObj):
 
     def update(self, dt_s):
         # TODO add setting of transformations
+        # TODO do physics integrations. after all integrations are done and what not, then compute matrix transformations and resulting points/etc
         TODO = 1000
-        #self.updateTransform(dt_s) # TODO determine if we need this function. It updates the bike's transform; but do we need it?
+        self.updateTransform(dt_s)  # Translate/rotate the bike (NOTE: this is regular ol' motion; for tricking, see updateTrick)
         self.aabb.computeBounds(self.model) # TODO see aabb module for thoughts on computeBounds() vs update()
         self.updateTrick( TODO )    # Make sure updateTrick cals the proper functions to set the bike's transform
 
@@ -246,24 +252,26 @@ class Bike(GameObj):
     #==============================================================================
     # TODO move this into a bike update function
     def updateTransform(self, dt_s):
-        # Compose rotation matrices in this order (in the code) ZYX, which will be applied as X, then Y, then Z (because the engine post-multiplies
-        matCompose = matrix.mMultmat( matrix.Matrix.matRotZ(self.model.thz * DEGTORAD), matrix.Matrix.matRotY(self.model.thy * DEGTORAD) )
-        self.model.matRot = matrix.mMultmat( matCompose, matrix.Matrix.matRotX(self.model.thx * DEGTORAD) )
-
-
         # TODO split out the in-air rotation from translation
         if self.inAir:
             if not self.tricking :
-                self.model.children['frame'].thz = self.model.children['frame'].thz + 3
-                self.model.children['handlebar'].thz = self.model.children['frame'].thz    # If we're in the air, and not tricking, then we're slightly rotating   # TODO fix the angle references here. should be members of this class
+                # If we're in the air, and not tricking, then we're slightly rotating. Update the bike's top-level transform
+                self.model.thz = self.model.thz + 3
             
-            # TODO fix gravity (well.. do a real gravity calculation.. this is hackery)
-            self.position[1] = self.position[1] + Biker.yvel
-            Biker.yvel = Biker.yvel + 2.1   # The 2.1 here is some arbitrary constant found, probably, by experimentation
+        # TODO add gravity, friction, etc. Basically, add simple rigid body physics (if we can consider rigid body physics simple)
+        self.position[0] += self.velocity[0]
+        self.position[1] += self.velocity[1]
+        #Biker.yvel = Biker.yvel + 2.1   # The 2.1 here is some arbitrary constant found, probably, by experimentation # TODO delete this line
 
+        self.model.position = Point3D(self.position[0], self.position[1], self.position[2])
         self.model.matTrans = matrix.Matrix.matTrans(self.model.position.x, self.model.position.y, self.model.position.z)
 
-        # TODO also do physics/friction/deceleration
+        # Compose rotation matrices in this order (in the code) ZYX, which will be applied as X, then Y, then Z (because the engine post-multiplies
+        # self.model.matRot is the top-level transformation for the whole bike
+        # TODO: Borrow/steal the recursive matrix composition stuff from the draw() function and put it here. We need to compute resulting pts, and then use them for drawing/aabb computation/etc.
+        matCompose = matrix.mMultmat( matrix.Matrix.matRotZ(self.model.thz * DEGTORAD), matrix.Matrix.matRotY(self.model.thy * DEGTORAD) )
+        self.model.matRot = matrix.mMultmat( matCompose, matrix.Matrix.matRotX(self.model.thx * DEGTORAD) )
+
   
 
     #==============================================================================
@@ -610,7 +618,7 @@ class LevelManager(object):
 
         Scale = 120         	    # Scale is used in Rotate functions. May need to substitute a camera class?
         self.levelFinished = False  # self.levelFinished belongs in a game stats class or a level manager
-        self.curRamp = 1         	# The current ramp in the level (this probably won't be necessary once we have legit collision detection
+        self.curRamp = 0         	# The current ramp in the level (this probably won't be necessary once we have legit collision detection
         #NumTricks = 0       	    # Tracks how many tricks the player has performed (belongs in game stats class) # TODO probably delete this line
         #TrickCounter = 0    	    # Hmm, not sure how this differs from NumTricks. TODO read the code             # TODO probably delete this line
         MsgFrames = 0       	    # Used in messaging (how many frames to leave the message up for)
