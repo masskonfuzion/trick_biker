@@ -282,8 +282,8 @@ class Bike(GameObj):
         if obj_ref is None:
             obj_ref = self.model
 
-        ##    # TODO finish computing child transform (rot + trans + whatever else you want)
-        obj_ref.matRot = matrix.Matrix.matRotY(obj_ref.thy * math.pi / 180)
+        obj_ref.matRot = matrix.mMultmat( matrix.Matrix.matRotZ(obj_ref.thz * DEGTORAD), matrix.Matrix.matRotY(obj_ref.thy * DEGTORAD) )
+        obj_ref.matRot = matrix.mMultmat( obj_ref.matRot, matrix.Matrix.matRotX(obj_ref.thx * DEGTORAD) )
         obj_ref.matTrans = matrix.Matrix.matTrans(obj_ref.position.x, obj_ref.position.y, obj_ref.position.z)
 
         # Note: we postmult trans 1st and rot 2nd because the transform are applied right-to-left. e.g.,
