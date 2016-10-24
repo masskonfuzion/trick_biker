@@ -372,10 +372,8 @@ class GameStateImpl(GameStateBase):
 
     def Update(self, dt_s):
         # TODO put in fixed timestep updating. We want to update every cycle, but only draw when it's time to
-
         # TODO note: there are probably things that should ALWAYS happen in the Update function, no matter the substate (e.g. message manager updates?
         self.mm.update(dt_s)    # TODO possibly also pass in a reference to the gameplay stats object? (that's how we did it Falldown)
-        self.bike.update(dt_s)  # TODO possibly move the bike.update() call into the playing substate?
 
         if self.substate == PlayingSubstate.startlevel:
             # Initialize bike
@@ -405,6 +403,7 @@ class GameStateImpl(GameStateBase):
     
             ##xAdd1 = self.levelMgr.ramps[self.levelMgr.curRamp].x + self.levelMgr.ramps[self.levelMgr.curRamp].dist
             ###CIRCLE (xAdd1, self.levelMgr.y_ground - 10), 3, 3
+            self.bike.update(dt_s)  # TODO possibly move the bike.update() call into the playing substate?
             self.checkRamp(self.levelMgr.curRamp)    # TODO possibly move the checkRamp call into the playing substate?
 
             if self.bike.inAir:
@@ -456,8 +455,8 @@ class GameStateImpl(GameStateBase):
 
                         # Note: There has to be a better way to access vars and functions.. These lines of code are super long...
 
-                        self.levelMgr.drawLevel(screen, self.gamestats)
-                        self.bike.draw(screen)
+                        #self.levelMgr.drawLevel(screen, self.gamestats)
+                        #self.bike.draw(screen)
 
                         #PCOPY 1, 0: CLS
                         #WHILE INKEY$ <> CHR$(13): WEND

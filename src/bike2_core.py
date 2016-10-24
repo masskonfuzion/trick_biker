@@ -110,34 +110,47 @@ class Wireframe(object):
         """ Take in a LineType object. Append the line object to self.lines """
         self.lines.append(line)
 
-    def draw(self, render_surface, obj_ref=None, composed_xform=matrix.Matrix.matIdent()):
+    def draw(self, render_surface, obj_ref=None):
+        """ Recursively draw objects """
+        ##if obj_ref is None:
+        ##    obj_ref = self
+
+        ##print "Drawing a model. Num of lines:{}".format(len(self.lines))
+        ### NOTE: By the time we're drawing the Wireframe, the _xpoints list/array has already been computed
+        ##if obj_ref.children:
+        ##    for _, child_obj in obj_ref.children.iteritems():
+        ##        self.draw(render_surface, child_obj)
+
+        ##for lineData in obj_ref.lines:
+        ##    startPt = lineData[0]
+        ##    endPt = lineData[1]
+
+        ##    #import pdb; pdb.set_trace()
+
+        ##    # Note; for now, we're ignoring z; we only care to test out the frame drawing in 2D
+        ##    spCoords = obj_ref._xpoints[startPt]
+        ##    epCoords = obj_ref._xpoints[endPt]
+        ##    #logging.debug("sPt:{} - {}, ePt:{} - {}".format(startPt, spCoords, endPt, epCoords))
+        ##    print "sPt:{} - {}, ePt:{} - {}".format(startPt, spCoords, endPt, epCoords)
+        ##    pygame.draw.line(render_surface, (220, 220, 220), (spCoords[0], spCoords[1]), (epCoords[0], epCoords[1]) )
+
+
+
+
+
         """ Recursively compose transformations and draw objects """
         if obj_ref is None:
             obj_ref = self
 
-        ##    # TODO finish computing child transform (rot + trans + whatever else you want)
-        obj_ref.matRot = matrix.Matrix.matRotY(obj_ref.thy * math.pi / 180)
-        obj_ref.matTrans = matrix.Matrix.matTrans(obj_ref.position.x, obj_ref.position.y, obj_ref.position.z)
-
-        # Note: we postmult trans 1st and rot 2nd because the transform are applied right-to-left. e.g.,
-        # M = TRv, where T is translate, R is rot, and v is the vector. R is applied 1st, because it's closest to v
-        local_composed_xform = matrix.mMultmat(composed_xform, obj_ref.matTrans)
-        local_composed_xform = matrix.mMultmat(local_composed_xform, obj_ref.matRot)
-
         if obj_ref.children:
             for _, child_obj in obj_ref.children.iteritems():
-                self.draw(render_surface, child_obj, local_composed_xform)
-
-        # if no children, then compute final transformation matrix and render
-        del obj_ref._xpoints[:]
-
-        for point in obj_ref.points:
-            p = matrix.mMultvec(local_composed_xform, vector.Vector(point.x, point.y, point.z, 1.0))  # Use a vector, as required by pymkfmath's matrix multiplication api (and don't forget to set homogeneous coord to 1!!)
-            obj_ref._xpoints.append(Point3D(p.x, p.y, p.z))     # Then convert back to Point3D to comply with the original code for this game (TODO make some synergies between Point3D and Vector)
+                self.draw(render_surface, child_obj)
 
         for lineData in obj_ref.lines:
             startPt = lineData[0] - 1   # subtract 1 because we programmed this game in QBASIC with base = 1, not 0
             endPt = lineData[1] - 1
+
+            #import pdb; pdb.set_trace()
 
             # Note; for now, we're ignoring z; we only care to test out the frame drawing in 2D
             spCoords = obj_ref._xpoints[startPt]
@@ -187,7 +200,7 @@ class Bike(GameObj):
             pt = Point3D( item[0], item[1], item[2])
             self.model.children['frame'].addPoint(pt)
         # Also copy the line data
-        self.model.children['frame'].lines.extend(raw_bike_model['frame_line_data'])  # Couldn't also used addLine() by iterating through my line data and calling addLine(), one by one
+        self.model.children['frame'].lines.extend(raw_bike_model['frame_line_data'])  # Could've also used addLine() by iterating through my line data and calling addLine(), one by one
 
         # Now, do the handlebar
         self.model.children['handlebar'] = Wireframe()
@@ -213,6 +226,8 @@ class Bike(GameObj):
             self.model.children['handlebar'].children['wheel'].addPoint(pt)
         self.model.children['handlebar'].children['wheel'].lines.extend(raw_bike_model['wheel_line_data'])
 
+        self.updateTransform()      # This is necessary to compute transformed points, to be able to draw the bike right away
+
         ##TODO finish converting the commented-out code to either be in a bike member function, or otherwise wherever it belongs
         ###BikeStyle = 5
         ##
@@ -235,24 +250,14 @@ class Bike(GameObj):
         ##    self.gamestatsRef.timesUsed[n] = 0
         ##NEXT n
 
-    def update(self, dt_s):
-        # TODO add setting of transformations
-        # TODO do physics integrations. after all integrations are done and what not, then compute matrix transformations and resulting points/etc
-        TODO = 1000
-        self.updateTransform(dt_s)  # Translate/rotate the bike (NOTE: this is regular ol' motion; for tricking, see updateTrick)
-        self.aabb.computeBounds(self.model) # TODO see aabb module for thoughts on computeBounds() vs update()
-        self.updateTrick( TODO )    # Make sure updateTrick cals the proper functions to set the bike's transform
-
-    def draw(self, screen):
-        self.model.draw(screen)
-        self.aabb.draw(screen)  # For debuggind
-
     #==============================================================================
     #SUB Move
     #==============================================================================
-    # TODO move this into a bike update function
-    def updateTransform(self, dt_s):
-        # TODO split out the in-air rotation from translation
+    def update(self, dt_s):
+        # TODO add setting of transformations
+        # TODO do physics integrations. after all integrations are done and what not, then compute matrix transformations and resulting points/etc
+
+        TODO = 1000
         if self.inAir:
             if not self.tricking :
                 # If we're in the air, and not tricking, then we're slightly rotating. Update the bike's top-level transform
@@ -262,17 +267,42 @@ class Bike(GameObj):
         self.position[0] += self.velocity[0]
         self.position[1] += self.velocity[1]
         #Biker.yvel = Biker.yvel + 2.1   # The 2.1 here is some arbitrary constant found, probably, by experimentation # TODO delete this line
-
         self.model.position = Point3D(self.position[0], self.position[1], self.position[2])
-        self.model.matTrans = matrix.Matrix.matTrans(self.model.position.x, self.model.position.y, self.model.position.z)
 
-        # Compose rotation matrices in this order (in the code) ZYX, which will be applied as X, then Y, then Z (because the engine post-multiplies
-        # self.model.matRot is the top-level transformation for the whole bike
-        # TODO: Borrow/steal the recursive matrix composition stuff from the draw() function and put it here. We need to compute resulting pts, and then use them for drawing/aabb computation/etc.
-        matCompose = matrix.mMultmat( matrix.Matrix.matRotZ(self.model.thz * DEGTORAD), matrix.Matrix.matRotY(self.model.thy * DEGTORAD) )
-        self.model.matRot = matrix.mMultmat( matCompose, matrix.Matrix.matRotX(self.model.thx * DEGTORAD) )
 
-  
+        self.updateTransform()  # Translate/rotate the bike (NOTE: this is regular ol' motion; for tricking, see updateTrick)
+        self.aabb.computeBounds(self.model) # TODO see aabb module for thoughts on computeBounds() vs update()  # TODO - once we've updated transforms, AABB can simply use _xpoints; remove the _xpoints computation from AABB
+        self.updateTrick( TODO )    # Make sure updateTrick cals the proper functions to set the bike's transform
+
+    def draw(self, screen):
+        self.model.draw(screen) # TODO once we've udpated transforms, draw() does not need to compose transformations and apply them; only need to draw from _xpoints. Maybe updateTransform should be part of Wireframe class
+        self.aabb.draw(screen)  # For debuggind 
+
+    def updateTransform(self, obj_ref=None, composed_xform=matrix.Matrix.matIdent()):
+        if obj_ref is None:
+            obj_ref = self.model
+
+        ##    # TODO finish computing child transform (rot + trans + whatever else you want)
+        obj_ref.matRot = matrix.Matrix.matRotY(obj_ref.thy * math.pi / 180)
+        obj_ref.matTrans = matrix.Matrix.matTrans(obj_ref.position.x, obj_ref.position.y, obj_ref.position.z)
+
+        # Note: we postmult trans 1st and rot 2nd because the transform are applied right-to-left. e.g.,
+        # M = TRv, where T is translate, R is rot, and v is the vector. R is applied 1st, because it's closest to v
+        local_composed_xform = matrix.mMultmat(composed_xform, obj_ref.matTrans)
+        local_composed_xform = matrix.mMultmat(local_composed_xform, obj_ref.matRot)
+
+        #print "Child objects:{}".format(obj_ref.children)
+        if obj_ref.children:
+            for _, child_obj in obj_ref.children.iteritems():
+                self.updateTransform(child_obj, local_composed_xform)
+
+        # if no children, then compute final transformation matrix and render
+        del obj_ref._xpoints[:]
+
+        for point in obj_ref.points:
+            p = matrix.mMultvec(local_composed_xform, vector.Vector(point.x, point.y, point.z, 1.0))  # Use a vector, as required by pymkfmath's matrix multiplication api (and don't forget to set homogeneous coord to 1
+            #print "{}: point ({}, {}, {}) -> _xpoint ({}, {}, {})".format(obj_ref, point.x, point.y, point.z, p.x, p.y, p.z)
+            obj_ref._xpoints.append(Point3D(p.x, p.y, p.z))     # Then convert back to Point3D to comply with the original code for this game (TODO make some synergies between Point3D and Vector)
 
     #==============================================================================
     #SUB DoTrick (n)
