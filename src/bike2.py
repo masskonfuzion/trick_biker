@@ -61,12 +61,15 @@ def main():
 
     # NOTE timer should be part of application class, too, but this is hack'n'slash.. No time to fix it!!
     prev_time = pygame.time.get_ticks()
+    accumulator = 0.0
+    dt_s_fixed = 0.015
 
     while game.isRunning:
         curr_time = pygame.time.get_ticks()
         dt_s = (curr_time - prev_time) / 1000.0
         #print "Curr {}, prev {}, dt {}".format(curr_time, prev_time, dt_s)
         prev_time = curr_time
+        accumulator += dt_s
 
         # ----- Process events
         game.processEvents()
@@ -75,7 +78,9 @@ def main():
         game.processCommands()
 
         # ----- Update stuff
-        game.update(dt_s)
+        while accumulator >= dt_s_fixed:
+            game.update(dt_s_fixed)
+            accumulator -= dt_s_fixed
 
         # ----- pre-render 
         game.preRenderScene()

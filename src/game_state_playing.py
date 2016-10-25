@@ -2,7 +2,7 @@ from pymkfgame.core.message_queue import MessageQueue
 from pymkfgame.display_msg.display_msg import DisplayMessage
 from pymkfgame.display_msg.display_msg_manager import DisplayMessageManager
 from pymkfgame.core.game_state_base import GameStateBase
-from pymkfgame.mkfmath.common import DEGTORAD, COSS, SINN
+from pymkfgame.mkfmath.common import DEGTORAD, coss, sinn
 
 from bike2_core import *
 
@@ -376,6 +376,7 @@ class GameStateImpl(GameStateBase):
         self.mm.update(dt_s)    # TODO possibly also pass in a reference to the gameplay stats object? (that's how we did it Falldown)
 
         if self.substate == PlayingSubstate.startlevel:
+            # TODO break playingsubstates into their own functions, maybe
             # Initialize bike
             self.bike.Init()    # TODO move this out of update()? I'm not sure I like having it here
             self.bike.position = Point3D(320, self.levelMgr.y_ground, 0)        # TODO make a function that synchronizes bike position with bike model position
@@ -394,11 +395,6 @@ class GameStateImpl(GameStateBase):
 
             self.substate = PlayingSubstate.playing # TODO maybe put a couple of seconds' delay before substate change, or maybe require a keypress
         elif self.substate == PlayingSubstate.playing:
-            # TODO!! fix this. The bike should move _through_ the level
-            ### NOTE: What's actually happening here is that we're moving the level around the bike (the bike isn't moving at all)
-            ##FOR n = 1 TO self.levelMgr.numRamps
-            ##    self.levelMgr.ramps[n].x = self.levelMgr.ramps[n].x - self.rider.xvel
-            ##NEXT n
             ## TODO note/correct - there is some redundancy between the RiderType class and the Bike class. e.g., RiderType has xvel, and Bike have velocity Vector (which has an x component)
     
             ##xAdd1 = self.levelMgr.ramps[self.levelMgr.curRamp].x + self.levelMgr.ramps[self.levelMgr.curRamp].dist
@@ -794,16 +790,16 @@ class GameStateImpl(GameStateBase):
         # TODO List of Ramp objects should belong to the Level object (also TODO: make a Level object :-D)
         sx = self.levelMgr.ramps[n].x
         sy = self.levelMgr.ramps[n].y
-        ex = self.levelMgr.ramps[n].x + self.levelMgr.ramps[n].length * COSS[360 - self.levelMgr.ramps[n].incline]
-        ey = self.levelMgr.ramps[n].y + self.levelMgr.ramps[n].length * SINN[360 - self.levelMgr.ramps[n].incline]
+        ex = self.levelMgr.ramps[n].x + self.levelMgr.ramps[n].length * coss(360 - self.levelMgr.ramps[n].incline)
+        ey = self.levelMgr.ramps[n].y + self.levelMgr.ramps[n].length * sinn(360 - self.levelMgr.ramps[n].incline)
     
         #if self.levelMgr.ramps[n].x <= BarPts2D(5).x:  # TODO don't hardcode points.. Use references
         #if self.bike.aabb._maxPt[0] > self.levelMgr.ramps[n].x: # remember, _maxPts is a tuple, with no .x, .y, or .z attributes
         if self.bike.aabb._maxPt[0] > sx: # remember, _maxPts is a tuple, with no .x, .y, or .z attributes
             self.bike.model.thz = 360 - self.levelMgr.ramps[n].incline # set the top-level rotation angle (which will be processed when we need to know where points are, for drawing/colliding)
     
-            self.bike.velocity[1] = self.rider.jump * (self.bike.velocity[0] * SINN[self.bike.model.thz]) + 2.25    #1.5707 # TODO do better math than this. You came up with these numbers just through trial and error.. what looked good
-            self.bike.velocity[0] = self.bike.velocity[0] * COSS[self.bike.model.thz]
+            self.bike.velocity[1] = self.rider.jump * (self.bike.velocity[0] * sinn(self.bike.model.thz)) + 2.25    #1.5707 # TODO do better math than this. You came up with these numbers just through trial and error.. what looked good
+            self.bike.velocity[0] = self.bike.velocity[0] * coss(self.bike.model.thz)
             y = ey - 18 # TODO: Fix. Don't hardcode bike's y-position when jumping. Use collision detection, or otherwise math formulas to determine the bike's position on the ramp
     
             self.bike.inAir = True

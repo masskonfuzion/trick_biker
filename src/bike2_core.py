@@ -8,7 +8,7 @@ import logging
 import math
 from pymkfgame.mkfmath import matrix
 from pymkfgame.mkfmath import vector
-from pymkfgame.mkfmath.common import DEGTORAD, COSS, SINN
+from pymkfgame.mkfmath.common import DEGTORAD, coss, sinn
 from pymkfgame.collision import aabb
 from pymkfgame.gameobj.gameobj import GameObj
 
@@ -261,7 +261,9 @@ class Bike(GameObj):
         if self.inAir:
             if not self.tricking :
                 # If we're in the air, and not tricking, then we're slightly rotating. Update the bike's top-level transform
-                self.model.thz = self.model.thz + 3
+                self.model.thz = self.model.thz + (30 * dt_s)        # Pitch the nose down by a small angular velocity (to approximate the nose drifting towards the ground when the biker hangs in the air)
+                #self.model.thz = self.model.thz + 1
+                print self.model.thz
             
         # TODO add gravity, friction, etc. Basically, add simple rigid body physics (if we can consider rigid body physics simple)
         self.position[0] += self.velocity[0]
@@ -724,8 +726,8 @@ class LevelManager(object):
     def drawLevel(self, screen, stats_and_configs):
         # TODO maybe come back and optimize performance here? (reduce # of floating pt operations?)
         for n in range(0, len(self.ramps)):
-            ramp_length = self.ramps[n].length * COSS[self.ramps[n].incline]
-            ramp_height = self.ramps[n].length * SINN[self.ramps[n].incline]
+            ramp_length = self.ramps[n].length * coss(self.ramps[n].incline)
+            ramp_height = self.ramps[n].length * sinn(self.ramps[n].incline)
             ramp_gap = self.ramps[n].dist
 
             launch_sx = self.ramps[n].x
@@ -746,12 +748,12 @@ class LevelManager(object):
             #sx = self.ramps[n].x
             #sy = self.ramps[n].y
     
-            #ex = self.ramps[n].x + self.ramps[n].length * COSS[360 - self.ramps[n].incline]
-            #ex2 = self.ramps[n].x + self.ramps[n].length * COSS[self.ramps[n].incline]
+            #ex = self.ramps[n].x + self.ramps[n].length * coss(360 - self.ramps[n].incline)
+            #ex2 = self.ramps[n].x + self.ramps[n].length * coss(self.ramps[n].incline)
             #if n > 1:
             #    ex22 = self.ramps[n - 1].x + illusion_offset + self.ramps[n - 1].dist
-            #    ex22 = ex22 + self.ramps[n - 1].length * COSS[self.ramps[n - 1].incline]
-            #ey = self.ramps[n].y + self.ramps[n].length * SINN[360 - self.ramps[n].incline]
+            #    ex22 = ex22 + self.ramps[n - 1].length * coss(self.ramps[n - 1].incline)
+            #ey = self.ramps[n].y + self.ramps[n].length * sinn(360 - self.ramps[n].incline)
     
             #if stats_and_configs.track3d:
             #    tw = 44         #track width (an offset to give the illusion of 3D)
