@@ -297,7 +297,7 @@ class Bike(GameObj):
 
     def draw(self, screen, matView=matrix.Matrix.matIdent()):
         self.model.draw(screen, matView=matView)
-        self.aabb.draw(screen)  # For debugging # TODO add view matrix after debugging it
+        self.aabb.draw(screen, matView=matView)     # For debugging
 
 
     #==============================================================================
