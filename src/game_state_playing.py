@@ -3,6 +3,8 @@ from pymkfgame.display_msg.display_msg import DisplayMessage
 from pymkfgame.display_msg.display_msg_manager import DisplayMessageManager
 from pymkfgame.core.game_state_base import GameStateBase
 from pymkfgame.mkfmath.common import DEGTORAD, coss, sinn
+from pymkfgame.mkfmath.vector import *
+from pymkfgame.mkfmath.refframe import *
 
 from bike2_core import *
 
@@ -292,6 +294,8 @@ class GameStateImpl(GameStateBase):
         
         self.rider = RiderType()                # rider replaced Biker from the QBASIC game
 
+        self.refFrame = ReferenceFrame()
+
     def Cleanup(self):
         pass
 
@@ -387,6 +391,17 @@ class GameStateImpl(GameStateBase):
             self.rider.jump = 3.0 # TODO don't hardcode biker abilities
             self.rider.turn = 45 # TODO don't hardcode biker abilities
 
+            ## TODO Do something useful with frames of reference. The stuff you're doing with it right now is for testing purposes and will probably be replaced. Also, refFrame isn't defined in state.Init(). It's defined here
+            self.refFrame.setUpVector(0,-1,0)
+            self.refFrame.setLookVector(0,0,-1)
+            self.refFrame.setPosition(-320, 0, 0)
+            ##self.refFrame.setPosition(350, self.levelMgr.y_ground + 30, -50)
+            ##look = Vector(self.bike.position[0] - self.refFrame.position[0], self.bike.position[1] - self.refFrame.position[1], self.bike.position[2] - self.refFrame.position[2])
+            ##self.refFrame.setLookVector(look[0], look[1], look[2])
+            #vNormalize(self.refFrame.look)
+            #import pdb; pdb.set_trace()
+            self.bike.model.updateModelTransform()
+            # TODO make viewport matrix, as well. Viewport happens after projection, so the main point is to compute vertices to fit in a desired viewport/window within the screen
 
             # Display level start message
             self.levelMgr.currentLevel = 1   # TODO don't hardcode the level here. Set self.levelMgr.currentLevel = 1 at game init, then increment
@@ -451,11 +466,6 @@ class GameStateImpl(GameStateBase):
 
                         # Note: There has to be a better way to access vars and functions.. These lines of code are super long...
 
-                        #self.levelMgr.drawLevel(screen, self.gamestats)
-                        #self.bike.draw(screen)
-
-                        #PCOPY 1, 0: CLS
-                        #WHILE INKEY$ <> CHR$(13): WEND
                         self.rider.xvel = 0
             
                     if not bike.crashed:
@@ -478,8 +488,6 @@ class GameStateImpl(GameStateBase):
                     ##CALL RotateBike(self.bike.model.children['frame'].thx, self.bike.model.children['frame'].thy + 180, self.bike.model.children['frame'].thz)
                     ##CALL RotateBar(self.bike.model.children['handlebar'].thx, self.bike.model.children['handlebar'].thy + 180, self.bike.model.children['handlebar'].thz)
                     ##self.levelMgr.drawLevel()
-                    ##bike.draw()
-                    ##self.drawStatus
                     self.staticMsg['presskey'].changeText("Press <Enter> to continue.")
             
                     if self.gamestats.score >= ScoreToBeat(self.levelMgr.currentLevel) :
@@ -546,10 +554,47 @@ class GameStateImpl(GameStateBase):
 
     def RenderScene(self):
         # TODO put in fixed timestep updating / some time of timer class. We want to update every cycle, but only draw when it's time to. Something like: if timer.timeToDraw: draw it else: return
+        # TODO all objects should update their vertices based on view transforms here. Ideally, we should use a vertex buffer to combine all renderable vertices, and then apply the xform to the buffer.. But, we're not there yet
         self.appRef.surface_bg.fill((0,0,0))
 
-        self.levelMgr.drawLevel(self.appRef.surface_bg, self.gamestats)
-        self.bike.draw(self.appRef.surface_bg)
+        # Set up viewport transformation # TODO put viewport transformation into a class?
+        screensize = self.appRef.surface_bg.get_size()
+
+        xmin_vp = 0 # xmin for the viewport
+        xmax_vp = screensize[0]
+
+        ymin_vp = 0
+        ymax_vp = screensize[1]
+
+        xmin_world = -600   # world coords will be mapped into the viewport space
+        xmax_world = 600
+
+        ymin_world = -400
+        ymax_world = 400
+
+        m_x = float(xmax_vp - xmin_vp) / float(xmax_world - xmin_world)     # m for linear equation form y = mx + b
+        b_x = float(xmin_vp + xmax_vp) / float(2)                           # b for linear equation form y = mx + b
+
+        m_y = float(ymax_vp - ymin_vp) / float(ymax_world - ymin_world)
+        b_y = float(ymin_vp + ymax_vp) / float(2)
+
+
+        # NOTE viewport matrix defines how the already-projected gameworld will appear on the screen
+        viewportMatrix = matrix.Matrix(m_x, 0, 0, 0,
+                                       0, m_y, 0, 0,
+                                       0, 0, 0, 0,
+                                       b_x, b_y, 0, 1)
+
+        # Get the view matrix (i.e. camera view)
+        viewMatrix = self.refFrame.getMatrix()
+
+        #import pdb; pdb.set_trace()
+        composedViewportAndView = matrix.mMultmat(viewportMatrix, viewMatrix)
+        self.levelMgr.drawLevel(self.appRef.surface_bg, self.gamestats, matView=composedViewportAndView)
+        self.bike.draw(self.appRef.surface_bg, matView=composedViewportAndView)
+
+        #self.levelMgr.drawLevel(self.appRef.surface_bg, self.gamestats, matView=viewMatrix)
+        #self.bike.draw(self.appRef.surface_bg, matView=viewMatrix)
 
     def PostRenderScene(self):
         self.drawStatus(self.appRef.surface_bg)    # TODO: Pythonize. status can be an overlay on the game window
@@ -796,12 +841,16 @@ class GameStateImpl(GameStateBase):
         #if self.levelMgr.ramps[n].x <= BarPts2D(5).x:  # TODO don't hardcode points.. Use references
         #if self.bike.aabb._maxPt[0] > self.levelMgr.ramps[n].x: # remember, _maxPts is a tuple, with no .x, .y, or .z attributes
         if self.bike.aabb._maxPt[0] > sx: # remember, _maxPts is a tuple, with no .x, .y, or .z attributes
-            self.bike.model.thz = 360 - self.levelMgr.ramps[n].incline # set the top-level rotation angle (which will be processed when we need to know where points are, for drawing/colliding)
+            #self.bike.model.thz = 360 - self.levelMgr.ramps[n].incline # set the top-level rotation angle (which will be processed when we need to know where points are, for drawing/colliding)
     
-            self.bike.velocity[1] = self.rider.jump * (self.bike.velocity[0] * sinn(self.bike.model.thz)) + 2.25    #1.5707 # TODO do better math than this. You came up with these numbers just through trial and error.. what looked good
-            self.bike.velocity[0] = self.bike.velocity[0] * coss(self.bike.model.thz)
+            #self.bike.velocity[1] = self.rider.jump * (self.bike.velocity[0] * sinn(self.bike.model.thz)) + 2.25    #1.5707 # TODO do better math than this. You came up with these numbers just through trial and error.. what looked good
+            #self.bike.velocity[0] = self.bike.velocity[0] * coss(self.bike.model.thz)
             y = ey - 18 # TODO: Fix. Don't hardcode bike's y-position when jumping. Use collision detection, or otherwise math formulas to determine the bike's position on the ramp
     
+            self.bike.model.thz = self.levelMgr.ramps[n].incline # set the top-level rotation angle (which will be processed when we need to know where points are, for drawing/colliding)
+    
+            self.bike.velocity[1] = self.rider.jump * (self.bike.velocity[0] * sinn(self.bike.model.thz))    #1.5707 # TODO do better math than this. You came up with these numbers just through trial and error.. what looked good
+            self.bike.velocity[0] = self.bike.velocity[0] * coss(self.bike.model.thz)
             self.bike.inAir = True
 
 

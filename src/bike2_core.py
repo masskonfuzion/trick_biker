@@ -40,6 +40,9 @@ class Point3D(object):
         elif index == 2:
             self.z = value
 
+    def __str__(self):
+        return "({}, {}, {})".format(self.x, self.y, self.z)
+
 
 #==============================================================================
 class Point2D(object):
@@ -89,6 +92,7 @@ class Wireframe(object):
 
     """
     # TODO probably break the Wireframe class into its own module
+    # TODO maybe make Wireframe derive from a Drawable class, which contains the transformation matrices
     def __init__(self):
         self.position = Point3D()
         self.points = []        # these are the actual model points
@@ -97,7 +101,7 @@ class Wireframe(object):
         self.thx = 0.0  # Euler angles; used for computing rotations
         self.thy = 0.0
         self.thz = 0.0
-        self.matTrans = matrix.Matrix() # TODO be smarter about the matrices? Make an overall transformation matrix that is Trans x Rot?
+        self.matTrans = matrix.Matrix()
         self.matRot = matrix.Matrix()
         self.children = {}  # A dict of sub-objects (e.g., bike is a composite obj, containing a frame model and handlebars model
 
@@ -110,42 +114,23 @@ class Wireframe(object):
         """ Take in a LineType object. Append the line object to self.lines """
         self.lines.append(line)
 
-    def draw(self, render_surface, obj_ref=None):
+    def draw(self, render_surface, obj_ref=None, matView=matrix.Matrix.matIdent()):
         """ Recursively draw objects """
-        ##if obj_ref is None:
-        ##    obj_ref = self
-
-        ##print "Drawing a model. Num of lines:{}".format(len(self.lines))
-        ### NOTE: By the time we're drawing the Wireframe, the _xpoints list/array has already been computed
-        ##if obj_ref.children:
-        ##    for _, child_obj in obj_ref.children.iteritems():
-        ##        self.draw(render_surface, child_obj)
-
-        ##for lineData in obj_ref.lines:
-        ##    startPt = lineData[0]
-        ##    endPt = lineData[1]
-
-        ##    #import pdb; pdb.set_trace()
-
-        ##    # Note; for now, we're ignoring z; we only care to test out the frame drawing in 2D
-        ##    spCoords = obj_ref._xpoints[startPt]
-        ##    epCoords = obj_ref._xpoints[endPt]
-        ##    #logging.debug("sPt:{} - {}, ePt:{} - {}".format(startPt, spCoords, endPt, epCoords))
-        ##    print "sPt:{} - {}, ePt:{} - {}".format(startPt, spCoords, endPt, epCoords)
-        ##    pygame.draw.line(render_surface, (220, 220, 220), (spCoords[0], spCoords[1]), (epCoords[0], epCoords[1]) )
-
-
-
-
-
-        """ Recursively compose transformations and draw objects """
+        # TODO add a view transform parameter to all draw functions? (Maybe add it to the gameobj base class or whatever?)
         if obj_ref is None:
             obj_ref = self
 
         if obj_ref.children:
             for _, child_obj in obj_ref.children.iteritems():
-                self.draw(render_surface, child_obj)
+                self.draw(render_surface, child_obj, matView)
 
+        # Compute model points/vertices (well, right now, it's points..) transformed by view matrix # TODO! Also do this when drawing the track
+        xpoints_view = []
+        for xpoint_model in obj_ref._xpoints:
+            #import pdb; pdb.set_trace()
+            p = matrix.mMultvec(matView, vector.Vector(xpoint_model[0], xpoint_model[1], xpoint_model[2], 1.0))
+            xpoints_view.append( Point3D(p.x, p.y, p.z)  )  # Not sure if it matters that we force xpoints_view to be a Point3D, but we do it because we made model._xpoints a Point3D
+            
         for lineData in obj_ref.lines:
             startPt = lineData[0] - 1   # subtract 1 because we programmed this game in QBASIC with base = 1, not 0
             endPt = lineData[1] - 1
@@ -153,16 +138,50 @@ class Wireframe(object):
             #import pdb; pdb.set_trace()
 
             # Note; for now, we're ignoring z; we only care to test out the frame drawing in 2D
-            spCoords = obj_ref._xpoints[startPt]
-            epCoords = obj_ref._xpoints[endPt]
+            spCoords = xpoints_view[startPt]
+            epCoords = xpoints_view[endPt]
             #logging.debug("sPt:{} - {}, ePt:{} - {}".format(startPt, spCoords, endPt, epCoords))
             pygame.draw.line(render_surface, (220, 220, 220), (spCoords[0], spCoords[1]), (epCoords[0], epCoords[1]) )
+
+    def updateModelTransform(self, obj_ref=None, composed_xform=matrix.Matrix.matIdent()):
+        ''' Update _xpoints based ONLY on the "model" transforms -- translation and rotation '''
+        if obj_ref is None:
+            obj_ref = self
+
+        obj_ref.matRot = matrix.mMultmat( matrix.Matrix.matRotZ(obj_ref.thz * DEGTORAD), matrix.Matrix.matRotY(obj_ref.thy * DEGTORAD) )
+        obj_ref.matRot = matrix.mMultmat( obj_ref.matRot, matrix.Matrix.matRotX(obj_ref.thx * DEGTORAD) )
+        obj_ref.matTrans = matrix.Matrix.matTrans(obj_ref.position.x, obj_ref.position.y, obj_ref.position.z)
+
+        # Note: we postmult trans 1st and rot 2nd because the transform are applied right-to-left. e.g.,
+        # M = TRv, where T is translate, R is rot, and v is the vector. R is applied 1st, because it's closest to v
+        ##local_composed_xform = matrix.mMultmat(composed_xform, obj_ref.matTrans)
+        ##local_composed_xform = matrix.mMultmat(local_composed_xform, obj_ref.matRot)
+
+        local_composed_xform = matrix.mMultmat(composed_xform, obj_ref.matTrans)
+        local_composed_xform = matrix.mMultmat(local_composed_xform, obj_ref.matRot)
+
+        #print "Child objects:{}".format(obj_ref.children)
+        if obj_ref.children:
+            for _, child_obj in obj_ref.children.iteritems():
+                self.updateModelTransform(child_obj, local_composed_xform)
+
+        # if no children, then compute final transformation matrix and render
+        del obj_ref._xpoints[:]
+
+        for point in obj_ref.points:
+            p = matrix.mMultvec(local_composed_xform, vector.Vector(point.x, point.y, point.z, 1.0))  # Use a vector, as required by pymkfmath's matrix multiplication api (and don't forget to set homogeneous coord to 1
+            #print "{}: point ({}, {}, {}) -> _xpoint ({}, {}, {})".format(obj_ref, point.x, point.y, point.z, p.x, p.y, p.z)
+            obj_ref._xpoints.append(Point3D(p.x, p.y, p.z))     # Then convert back to Point3D to comply with the original code for this game (TODO make some synergies between Point3D and Vector)
+            # TODO optimize some stuff. Here, you construct Vectors for matrix mult, but then you construct Point3Ds. You do the same thing again in draw().. wasteful
+
+
+
+    # TODO probably want to generalize the calls to store/get transformed points/lines/etc from the models. Conceivably, we would want to get multiple instances of the data, possibly returned from a func, rather than stored in class member data
 
 #==============================================================================
 class Bike(GameObj):
     # NOTE: Remember that GameObj has xyz coords (position), and so does Wireframe. Make sure to keep them synchronized
     # TODO probably break Bike class into its own module
-    # TODO add a draw() function, which should draw the bike's model
     def __init__(self):
         self.model = Wireframe()
         self.aabb = aabb.AABB()
@@ -226,7 +245,7 @@ class Bike(GameObj):
             self.model.children['handlebar'].children['wheel'].addPoint(pt)
         self.model.children['handlebar'].children['wheel'].lines.extend(raw_bike_model['wheel_line_data'])
 
-        self.updateTransform()      # This is necessary to compute transformed points, to be able to draw the bike right away
+        self.model.updateModelTransform()      # This is necessary to compute transformed points, to be able to draw the bike right away
 
         ##TODO finish converting the commented-out code to either be in a bike member function, or otherwise wherever it belongs
         ###BikeStyle = 5
@@ -261,9 +280,9 @@ class Bike(GameObj):
         if self.inAir:
             if not self.tricking :
                 # If we're in the air, and not tricking, then we're slightly rotating. Update the bike's top-level transform
-                self.model.thz = self.model.thz + (30 * dt_s)        # Pitch the nose down by a small angular velocity (to approximate the nose drifting towards the ground when the biker hangs in the air)
+                self.model.thz = self.model.thz - (30 * dt_s)        # Pitch the nose down by a small angular velocity (to approximate the nose drifting towards the ground when the biker hangs in the air)
                 #self.model.thz = self.model.thz + 1
-                print self.model.thz
+                #print self.model.thz
             
         # TODO add gravity, friction, etc. Basically, add simple rigid body physics (if we can consider rigid body physics simple)
         self.position[0] += self.velocity[0]
@@ -272,39 +291,14 @@ class Bike(GameObj):
         self.model.position = Point3D(self.position[0], self.position[1], self.position[2])
 
 
-        self.updateTransform()  # Translate/rotate the bike (NOTE: this is regular ol' motion; for tricking, see updateTrick)
+        self.model.updateModelTransform()  # Translate/rotate the bike (NOTE: this is regular ol' motion; for tricking, see updateTrick)
         self.aabb.computeBounds(self.model) # TODO see aabb module for thoughts on computeBounds() vs update()  # TODO - once we've updated transforms, AABB can simply use _xpoints; remove the _xpoints computation from AABB
         self.updateTrick( TODO )    # Make sure updateTrick cals the proper functions to set the bike's transform
 
-    def draw(self, screen):
-        self.model.draw(screen) # TODO once we've udpated transforms, draw() does not need to compose transformations and apply them; only need to draw from _xpoints. Maybe updateTransform should be part of Wireframe class
-        self.aabb.draw(screen)  # For debuggind 
+    def draw(self, screen, matView=matrix.Matrix.matIdent()):
+        self.model.draw(screen, matView=matView)
+        self.aabb.draw(screen)  # For debugging # TODO add view matrix after debugging it
 
-    def updateTransform(self, obj_ref=None, composed_xform=matrix.Matrix.matIdent()):
-        if obj_ref is None:
-            obj_ref = self.model
-
-        obj_ref.matRot = matrix.mMultmat( matrix.Matrix.matRotZ(obj_ref.thz * DEGTORAD), matrix.Matrix.matRotY(obj_ref.thy * DEGTORAD) )
-        obj_ref.matRot = matrix.mMultmat( obj_ref.matRot, matrix.Matrix.matRotX(obj_ref.thx * DEGTORAD) )
-        obj_ref.matTrans = matrix.Matrix.matTrans(obj_ref.position.x, obj_ref.position.y, obj_ref.position.z)
-
-        # Note: we postmult trans 1st and rot 2nd because the transform are applied right-to-left. e.g.,
-        # M = TRv, where T is translate, R is rot, and v is the vector. R is applied 1st, because it's closest to v
-        local_composed_xform = matrix.mMultmat(composed_xform, obj_ref.matTrans)
-        local_composed_xform = matrix.mMultmat(local_composed_xform, obj_ref.matRot)
-
-        #print "Child objects:{}".format(obj_ref.children)
-        if obj_ref.children:
-            for _, child_obj in obj_ref.children.iteritems():
-                self.updateTransform(child_obj, local_composed_xform)
-
-        # if no children, then compute final transformation matrix and render
-        del obj_ref._xpoints[:]
-
-        for point in obj_ref.points:
-            p = matrix.mMultvec(local_composed_xform, vector.Vector(point.x, point.y, point.z, 1.0))  # Use a vector, as required by pymkfmath's matrix multiplication api (and don't forget to set homogeneous coord to 1
-            #print "{}: point ({}, {}, {}) -> _xpoint ({}, {}, {})".format(obj_ref, point.x, point.y, point.z, p.x, p.y, p.z)
-            obj_ref._xpoints.append(Point3D(p.x, p.y, p.z))     # Then convert back to Point3D to comply with the original code for this game (TODO make some synergies between Point3D and Vector)
 
     #==============================================================================
     #SUB DoTrick (n)
@@ -628,7 +622,7 @@ class LevelManager(object):
         self.curRamp = 0
 
         self.numRamps = 0
-        self.y_ground = 325
+        self.y_ground = 0
 
         self.ramps = []
         self.scoreToBeat = 0
@@ -723,70 +717,37 @@ class LevelManager(object):
     #SUB drawLevel
     #
     #==============================================================================
-    def drawLevel(self, screen, stats_and_configs):
+    def drawLevel(self, screen, stats_and_configs, matView=matrix.Matrix.matIdent()):
         # TODO maybe come back and optimize performance here? (reduce # of floating pt operations?)
         for n in range(0, len(self.ramps)):
             ramp_length = self.ramps[n].length * coss(self.ramps[n].incline)
             ramp_height = self.ramps[n].length * sinn(self.ramps[n].incline)
             ramp_gap = self.ramps[n].dist
 
+            # TODO maybe hack this stuff up a little when it comes to 3D track rendering
             launch_sx = self.ramps[n].x
             launch_sy = self.ramps[n].y
+            launch_sz = 0.0
 
             launch_ex = self.ramps[n].x + ramp_length
             launch_ey = self.ramps[n].y + ramp_height
+            launch_ez = 0.0
 
             land_ex = launch_ex + ramp_gap
             land_ey = launch_ey
+            land_ez = 0.0
 
             land_sx = land_ex + ramp_length
             land_sy = self.ramps[n].y
+            land_sz = 0.0
 
-            pygame.draw.line(screen, (192, 192, 192), (launch_sx, launch_sy), (launch_ex, launch_ey))
-            pygame.draw.line(screen, (192, 192, 192), (land_sx, land_sy), (land_ex, land_ey))
+            # Apply view transformation
+            launch_start = matrix.mMultvec(matView, vector.Vector(launch_sx, launch_sy, launch_sz, 1.0))
+            launch_end = matrix.mMultvec(matView, vector.Vector(launch_ex, launch_ey, launch_ez, 1.0))
 
-            #sx = self.ramps[n].x
-            #sy = self.ramps[n].y
-    
-            #ex = self.ramps[n].x + self.ramps[n].length * coss(360 - self.ramps[n].incline)
-            #ex2 = self.ramps[n].x + self.ramps[n].length * coss(self.ramps[n].incline)
-            #if n > 1:
-            #    ex22 = self.ramps[n - 1].x + illusion_offset + self.ramps[n - 1].dist
-            #    ex22 = ex22 + self.ramps[n - 1].length * coss(self.ramps[n - 1].incline)
-            #ey = self.ramps[n].y + self.ramps[n].length * sinn(360 - self.ramps[n].incline)
-    
-            #if stats_and_configs.track3d:
-            #    tw = 44         #track width (an offset to give the illusion of 3D)
-            #    illusion_offset = -5         #3d illusion offset
-            #else:
-            #    tw = 0
-            #    illusion_offset = 0
-    
-            #if n == 1:
-            #    pygame.draw.line(screen, (192, 192, 192), (0, self.y_ground - 10 - tw), (self.ramps[n].x, self.y_ground - 10 - tw))
-            #    pygame.draw.line(screen, (192, 192, 192), (0, self.y_ground - 10 + tw), (self.ramps[n].x + illusion_offset, self.y_ground - 10 + tw))
+            land_start = matrix.mMultvec(matView, vector.Vector(land_sx, land_sy, land_sz, 1.0))
+            land_end = matrix.mMultvec(matView, vector.Vector(land_ex, land_ey, land_ez, 1.0))
 
-            #else:
-            #    pygame.draw.line(screen, (192, 192, 192), (ex22, self.y_ground - 10 - tw), (self.ramps[n].x, self.y_ground - 10 - tw)) 
-            #    pygame.draw.line(screen, (192, 192, 192), (ex22 + illusion_offset, self.y_ground - 10 + tw), (self.ramps[n].x + illusion_offset, self.y_ground - 10 + tw))
+            pygame.draw.line(screen, (192, 192, 192), (launch_start[0], launch_start[1]), (launch_end[0], launch_end[1]))
+            pygame.draw.line(screen, (192, 192, 192), (land_start[0], land_start[1]), (land_end[0], land_end[1]))
 
-            #    if n == self.levelMgr.numRamps:
-            #        pygame.draw.line(screen, (192, 192, 192), (ex2 + self.ramps[n].dist, self.y_ground - 10 - tw), (639, self.y_ground - 10 - tw))
-            #        pygame.draw.line(screen, (192, 192, 192), (ex2 + self.ramps[n].dist, self.y_ground - 10 + tw), (639, self.y_ground - 10 + tw))
-    
-            #pygame.draw.line(screen, (192, 192, 192), (sx + illusion_offset, sy + tw), (ex + illusion_offset, ey + tw))
-            #pygame.draw.line(screen, (192, 192, 192), (sx + illusion_offset + self.ramps[n].dist, ey + tw), (ex2 + illusion_offset + self.ramps[n].dist, sy + tw))
-    
-            #pygame.draw.line(screen, (192, 192, 192), (sx, sy - tw), (ex, ey - tw))
-            #pygame.draw.line(screen, (192, 192, 192), (sx + self.ramps[n].dist, ey - tw), (ex2 + self.ramps[n].dist, sy - tw))
-    
-            #pygame.draw.line(screen, (192, 192, 192), (sx + illusion_offset, sy + tw), (sx, sy - tw))
-            #pygame.draw.line(screen, (192, 192, 192), (ex + illusion_offset, ey + tw), (ex, ey - tw))
-            #pygame.draw.line(screen, (192, 192, 192), (sx + illusion_offset + self.ramps[n].dist, ey + tw), (sx + self.ramps[n].dist, ey - tw))
-            #pygame.draw.line(screen, (192, 192, 192), (ex2 + illusion_offset + self.ramps[n].dist, sy + tw), (ex2 + self.ramps[n].dist, sy - tw))
-    
-            #PAINT (sx, sy), 6, 15
-            #PAINT (ex2 + self.ramps[n].dist - 2, ey), 6, 15
-    
-            #CIRCLE (sx, sy), 4, 4
-    
