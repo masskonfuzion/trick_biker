@@ -12,6 +12,17 @@ from pymkfgame.mkfmath.common import DEGTORAD, coss, sinn
 from pymkfgame.collision import aabb
 from pymkfgame.gameobj.gameobj import GameObj
 
+###==============================================================================
+##class World(object):
+##    ''' A "world" class for physics. '''
+##    def __init__(self):
+##        self.gravity = Vector()
+##
+##    def setGravity(self, x, y, z):
+##        self.gravity[0] = x;
+##        self.gravity[1] = y;
+##        self.gravity[2] = z;
+
 #==============================================================================
 class Point3D(object):
     def __init__(self, px=0.0, py=0.0, pz=0.0):
@@ -183,15 +194,18 @@ class Bike(GameObj):
     # NOTE: Remember that GameObj has xyz coords (position), and so does Wireframe. Make sure to keep them synchronized
     # TODO probably break Bike class into its own module
     def __init__(self):
+        super(Bike, self).__init__()
+
         self.model = Wireframe()
         self.aabb = aabb.AABB()
         self.colors = []    # a list of ColorType objects, f.k.a. BikeCol (to be set by InitBike())
         self.style = 0      # TODO: consider replacing with a BikeStyle object (right now, style is an int, which dictates which of a predefined set of styles the bike could have)
         self.scale = 1.0
-        self.position = Point3D()   # Note that we're using Point3D for bike's position, even though GameObj has a position.. Revisit this
-        self.velocity = vector.Vector()
+        #self.position = Point3D()   # Note that we're using Point3D for bike's position, even though GameObj has a position.. Revisit this     # TODO delete this
+        #self.velocity = vector.Vector()  # TODO note that Bike is a gameobj, which has _position, _velocity, and _acceleration. Here you're defining a new position, and all that.
         self.gamestatsRef = None    # A reference to the game engine's gamestats object
         self.mmRef = None           # A reference to the game engine's message manager
+        self.levelMgrRef = None     # A reference to the game engine's level manager (We can probably do better than assigning all of these references. Maybe give a reference to the game engine itself, and one to the gamestate)
 
         self.crashed = False
         self.inAir = False
@@ -210,7 +224,7 @@ class Bike(GameObj):
         #logging.debug("raw_bike_model:{}".format(raw_bike_model))
 
         # Construct the bike model
-        self.position = Point3D(0.0, 0.0, 0.0)
+        self._position = vector.Vector(0.0, 0.0, 0.0, 1.0)  # TODO seriously.. either incorporate Point3D into the engine or don't..
         self.model.position = Point3D(0.0, 0.0, 0.0)    # Force a new obj, not simply a ref to self.position (could also write a "copy" function, similar to a copy constructor, but Python doesn't have copy constructors
 
         self.model.children['frame'] = Wireframe()
@@ -277,19 +291,33 @@ class Bike(GameObj):
         # TODO do physics integrations. after all integrations are done and what not, then compute matrix transformations and resulting points/etc
 
         TODO = 1000
+
+        # Start off calculating acceleration due to gravity
+        self._acceleration[0] = self.levelMgrRef.gravity[0]
+        self._acceleration[1] = self.levelMgrRef.gravity[1]
+        self._acceleration[2] = self.levelMgrRef.gravity[2]
+
         if self.inAir:
             if not self.tricking :
                 # If we're in the air, and not tricking, then we're slightly rotating. Update the bike's top-level transform
                 self.model.thz = self.model.thz - (30 * dt_s)        # Pitch the nose down by a small angular velocity (to approximate the nose drifting towards the ground when the biker hangs in the air)
                 #self.model.thz = self.model.thz + 1
                 #print self.model.thz
+        else:
+            self._acceleration = vector.vSub(self._acceleration, self.levelMgrRef.gravity)
+
+        # TODO add any other contributors to acceleration (e.g., the ground, pushing up, negating gravity)
             
         # TODO add gravity, friction, etc. Basically, add simple rigid body physics (if we can consider rigid body physics simple)
-        self.position[0] += self.velocity[0]
-        self.position[1] += self.velocity[1]
-        #Biker.yvel = Biker.yvel + 2.1   # The 2.1 here is some arbitrary constant found, probably, by experimentation # TODO delete this line
-        self.model.position = Point3D(self.position[0], self.position[1], self.position[2])
+        # TODO holy crap, seriously. Fix the weirdness.. gameobj's have _position; Wireframes have position..
+        self._position[0] += self._velocity[0] * dt_s
+        self._position[1] += self._velocity[1] * dt_s
 
+        self._velocity[0] += self._acceleration[0] * dt_s
+        self._velocity[1] += self._acceleration[1] * dt_s
+
+        #Biker.yvel = Biker.yvel + 2.1   # The 2.1 here is some arbitrary constant found, probably, by experimentation # TODO delete this line
+        self.model.position = Point3D(self._position[0], self._position[1], self._position[2])
 
         self.model.updateModelTransform()  # Translate/rotate the bike (NOTE: this is regular ol' motion; for tricking, see updateTrick)
         self.aabb.computeBounds(self.model) # TODO see aabb module for thoughts on computeBounds() vs update()  # TODO - once we've updated transforms, AABB can simply use _xpoints; remove the _xpoints computation from AABB
@@ -616,6 +644,7 @@ class Bike(GameObj):
 class LevelManager(object):
     # TODO make LevelManager its own module, probably
     def __init__(self):
+        self.gravity = vector.Vector(0.0, -140, 0.0)    # Gravity: set it and forget it
         self.currentLevel = 0
         self.levelFinished = False
         self.finalLevel = 0     # Initialize final level when loading level data or something
@@ -651,8 +680,9 @@ class LevelManager(object):
         msg = ""           		    # Used in messaging - the message text itself
     
     
-        # TODO take in a bike obj and set the bike's position (and the bike model's position, which are separate values)
-        x = 120                     # Bike position on screen (TODO: Decide. LevelManager probably shouldn't be responsible for this? Or, maybe it should, in which case, InitLevel needs a reference to the bike)
+        # TODO take in a bike obj and set the bike's _position (and the bike model's position, which are separate values)
+        # TODO - x, y, and z are candidates for deletion
+        x = 120                     # Bike _position on screen (TODO: Decide. LevelManager probably shouldn't be responsible for this? Or, maybe it should, in which case, InitLevel needs a reference to the bike)
         y = self.y_ground - 20 - 10
         z = -60        			    #z offset: keep this around -50 or -60
     
@@ -707,7 +737,7 @@ class LevelManager(object):
     def update(self, dt_s, bike):
         """ Update the level manager (e.g., things like curRamp and such)
 
-            Note: This takes in the bike object so it can know the bike's position and track current ramp, and such.
+            Note: This takes in the bike object so it can know the bike's _position and track current ramp, and such.
             To be more general, this function can maybe take in a dict of gameobjects
         """
         # TODO decide -- do we want LevelManager to have an update function? Or do we want to 'manually' update the level by calling checkRamp from the game loop?

@@ -291,6 +291,7 @@ class GameStateImpl(GameStateBase):
         self.bike = Bike()   # TODO make sure variable scoping and/or function parameters are straight
         self.bike.gamestatsRef = self.gamestats # give the bike a reference to gamestats
         self.bike.mmRef = self.mm               # give the bike a reference to the message manager
+        self.bike.levelMgrRef = self.levelMgr   # give the bike a reference to the level manager
         
         self.rider = RiderType()                # rider replaced Biker from the QBASIC game
 
@@ -383,20 +384,20 @@ class GameStateImpl(GameStateBase):
             # TODO break playingsubstates into their own functions, maybe
             # Initialize bike
             self.bike.Init()    # TODO move this out of update()? I'm not sure I like having it here
-            self.bike.position = Point3D(320, self.levelMgr.y_ground, 0)        # TODO make a function that synchronizes bike position with bike model position
+            self.bike._position = vector.Vector(320, self.levelMgr.y_ground, 0, 1)        # TODO make a function that synchronizes bike _position with bike model position
             self.bike.model.position = Point3D(320, self.levelMgr.y_ground, 0)  # Also TODO: do camera/projection model view
 
-            self.rider.maxspd = 17 # TODO don't hardcode biker abilities
-            self.rider.pump = 2.3 # TODO don't hardcode biker abilities
+            self.rider.maxspd = 120.0 # TODO don't hardcode biker abilities
+            self.rider.pump = 12.0 # TODO don't hardcode biker abilities
             self.rider.jump = 3.0 # TODO don't hardcode biker abilities
-            self.rider.turn = 45 # TODO don't hardcode biker abilities
+            self.rider.turn = 45.0 # TODO don't hardcode biker abilities
 
             ## TODO Do something useful with frames of reference. The stuff you're doing with it right now is for testing purposes and will probably be replaced. Also, refFrame isn't defined in state.Init(). It's defined here
             self.refFrame.setUpVector(0,-1,0)
             self.refFrame.setLookVector(0,0,-1)
             self.refFrame.setPosition(-320, 0, 0)
             ##self.refFrame.setPosition(350, self.levelMgr.y_ground + 30, -50)
-            ##look = Vector(self.bike.position[0] - self.refFrame.position[0], self.bike.position[1] - self.refFrame.position[1], self.bike.position[2] - self.refFrame.position[2])
+            ##look = Vector(self.bike._position[0] - self.refFrame.position[0], self.bike._position[1] - self.refFrame.position[1], self.bike._position[2] - self.refFrame.position[2])
             ##self.refFrame.setLookVector(look[0], look[1], look[2])
             #vNormalize(self.refFrame.look)
             #import pdb; pdb.set_trace()
@@ -414,14 +415,14 @@ class GameStateImpl(GameStateBase):
     
             ##xAdd1 = self.levelMgr.ramps[self.levelMgr.curRamp].x + self.levelMgr.ramps[self.levelMgr.curRamp].dist
             ###CIRCLE (xAdd1, self.levelMgr.y_ground - 10), 3, 3
-            self.bike.update(dt_s)  # TODO possibly move the bike.update() call into the playing substate?
+            self.bike.update(dt_s)
             self.checkRamp(self.levelMgr.curRamp)    # TODO possibly move the checkRamp call into the playing substate?
 
             if self.bike.inAir:
                 # This is rudimentary "collision detection" (more like a boundary test) for determining when the bike lands (self.levelMgr.y_ground is ground level)
                 # TODO replace the BikePts2D(21).y > self.levelMgr.y_ground with an AABB computation / boundary test
 
-                if self.rider.yvel < 0 and self.bike.aabb._minPt[1] <= 0.0:  # TODO make sure that biker's yvel is 0 when on the ground; otherwise this test will trigger false positives
+                if self.bike._velocity < 0 and self.bike.aabb._minPt[1] <= 0.0:  # TODO make sure that biker's yvel is 0 when on the ground; otherwise this test will trigger false positives
                     # TODO after doing rough-cut aabb test, do more precise testing.. somehow. Maybe an intersection test of the wireframe with the ground?
                     DidNotClearRamp = (BikePts2D(3).x < xAdd1)  # DidNotClearJump is based on which point on the bike touches the ground
             
@@ -617,7 +618,7 @@ class GameStateImpl(GameStateBase):
         if self.rider.maxspd == 0.0:
             self.rider.maxspd = 1.0 # TODO delete this hack; the purpose of it is to simply get the game up and running, before implementing character selection
         pygame.draw.line(self.appRef.surface_bg, (255,255,255), (bx - 1, by), (bx + l + 1, by + w))
-        pygame.draw.line(self.appRef.surface_bg, (0,255,0), (bx, by + 1), (bx + l * (self.bike.velocity[0] / self.rider.maxspd), by + w - 1)) # TODO we still need to make maxspd a property of something
+        pygame.draw.line(self.appRef.surface_bg, (0,255,0), (bx, by + 1), (bx + l * (self.bike._velocity[0] / self.rider.maxspd), by + w - 1))  # TODO we still need to make maxspd a property of something
         
         
         #LOCATE 1, 25: PRINT "Score: "; LTRIM$(STR$(gamestats.score))
@@ -686,9 +687,9 @@ class GameStateImpl(GameStateBase):
                     #if self.rider.xvel >= self.rider.maxspd:
                     #    self.rider.xvel = self.rider.maxspd
              
-                    self.bike.velocity[0] += self.rider.pump
-                    if self.bike.velocity[1] >= self.rider.maxspd:
-                        self.bike.velocity[0] = self.rider.maxspd
+                    self.bike._velocity[0] += self.rider.pump
+                    if self.bike._velocity[0] >= self.rider.maxspd:
+                        self.bike._velocity[0] = self.rider.maxspd
 
             elif self.bike.inAir and not bike.tricking:
                 if event.key == pygame.K_j:
@@ -838,19 +839,18 @@ class GameStateImpl(GameStateBase):
         ex = self.levelMgr.ramps[n].x + self.levelMgr.ramps[n].length * coss(360 - self.levelMgr.ramps[n].incline)
         ey = self.levelMgr.ramps[n].y + self.levelMgr.ramps[n].length * sinn(360 - self.levelMgr.ramps[n].incline)
     
-        #if self.levelMgr.ramps[n].x <= BarPts2D(5).x:  # TODO don't hardcode points.. Use references
-        #if self.bike.aabb._maxPt[0] > self.levelMgr.ramps[n].x: # remember, _maxPts is a tuple, with no .x, .y, or .z attributes
         if self.bike.aabb._maxPt[0] > sx: # remember, _maxPts is a tuple, with no .x, .y, or .z attributes
+            #import pdb; pdb.set_trace()
             #self.bike.model.thz = 360 - self.levelMgr.ramps[n].incline # set the top-level rotation angle (which will be processed when we need to know where points are, for drawing/colliding)
     
-            #self.bike.velocity[1] = self.rider.jump * (self.bike.velocity[0] * sinn(self.bike.model.thz)) + 2.25    #1.5707 # TODO do better math than this. You came up with these numbers just through trial and error.. what looked good
-            #self.bike.velocity[0] = self.bike.velocity[0] * coss(self.bike.model.thz)
+            #self.bike._velocity[1] = self.rider.jump * (self.bike._velocity[0] * sinn(self.bike.model.thz)) + 2.25    #1.5707 # TODO do better math than this. You came up with these numbers just through trial and error.. what looked good
+            #self.bike._velocity[0] = self.bike._velocity[0] * coss(self.bike.model.thz)
             y = ey - 18 # TODO: Fix. Don't hardcode bike's y-position when jumping. Use collision detection, or otherwise math formulas to determine the bike's position on the ramp
     
             self.bike.model.thz = self.levelMgr.ramps[n].incline # set the top-level rotation angle (which will be processed when we need to know where points are, for drawing/colliding)
     
-            self.bike.velocity[1] = self.rider.jump * (self.bike.velocity[0] * sinn(self.bike.model.thz))    #1.5707 # TODO do better math than this. You came up with these numbers just through trial and error.. what looked good
-            self.bike.velocity[0] = self.bike.velocity[0] * coss(self.bike.model.thz)
+            self.bike._velocity[1] = self.rider.jump * (self.bike._velocity[0] * sinn(self.bike.model.thz))    #1.5707 # TODO do better math than this. You came up with these numbers just through trial and error.. what looked good
+            self.bike._velocity[0] = self.bike._velocity[0] * coss(self.bike.model.thz)
             self.bike.inAir = True
 
 
