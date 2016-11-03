@@ -5,6 +5,7 @@ from pymkfgame.core.game_state_base import GameStateBase
 from pymkfgame.mkfmath.common import DEGTORAD, coss, sinn
 from pymkfgame.mkfmath.vector import *
 from pymkfgame.mkfmath.refframe import *
+import random
 
 from bike2_core import *
 
@@ -207,7 +208,7 @@ class GameplayStats(object):
     ##        message 6, "Biker: " + RiderName$, 1
     ##        LOCATE 7: PRINT STRING$(80, "-")
     ##        LOCATE 8, 1
-    ##        FOR n = flag TO flag + range        #TrickCounter
+    ##        FOR n = flag TO flag + range        #self.levelMgr.trickCounter
     ##            PRINT TAB(3); LTRIM$(STR$(n));
     ##            PRINT TAB(10); RunReport$(n)
     ##        NEXT n
@@ -229,7 +230,7 @@ class GameplayStats(object):
     ##                if flag < 1 : flag = 1
     ##            CASE "K"
     ##                flag = flag + 1
-    ##                if flag > TrickCounter - range : flag = TrickCounter - range
+    ##                if flag > self.levelMgr.trickCounter - range : flag = self.levelMgr.trickCounter - range
     ##            CASE CHR$(13)
     ##                EXIT SUB
     ##            END SELECT
@@ -292,8 +293,6 @@ class GameStateImpl(GameStateBase):
         self.bike.gamestatsRef = self.gamestats # give the bike a reference to gamestats
         self.bike.mmRef = self.mm               # give the bike a reference to the message manager
         self.bike.levelMgrRef = self.levelMgr   # give the bike a reference to the level manager
-        
-        self.rider = RiderType()                # rider replaced Biker from the QBASIC game
 
         self.refFrame = ReferenceFrame()
 
@@ -387,10 +386,10 @@ class GameStateImpl(GameStateBase):
             self.bike._position = vector.Vector(320, self.levelMgr.y_ground, 0, 1)        # TODO make a function that synchronizes bike _position with bike model position
             self.bike.model.position = Point3D(320, self.levelMgr.y_ground, 0)  # Also TODO: do camera/projection model view
 
-            self.rider.maxspd = 120.0 # TODO don't hardcode biker abilities
-            self.rider.pump = 12.0 # TODO don't hardcode biker abilities
-            self.rider.jump = 3.0 # TODO don't hardcode biker abilities
-            self.rider.turn = 45.0 # TODO don't hardcode biker abilities
+            self.bike.rider.maxspd = 130.0 # TODO don't hardcode biker abilities
+            self.bike.rider.pump = 12.0 # TODO don't hardcode biker abilities
+            self.bike.rider.jump = 3.0 # TODO don't hardcode biker abilities
+            self.bike.rider.turn = 45.0 # TODO don't hardcode biker abilities
 
             ## TODO Do something useful with frames of reference. The stuff you're doing with it right now is for testing purposes and will probably be replaced. Also, refFrame isn't defined in state.Init(). It's defined here
             self.refFrame.setUpVector(0,-1,0)
@@ -416,22 +415,44 @@ class GameStateImpl(GameStateBase):
             ##xAdd1 = self.levelMgr.ramps[self.levelMgr.curRamp].x + self.levelMgr.ramps[self.levelMgr.curRamp].dist
             ###CIRCLE (xAdd1, self.levelMgr.y_ground - 10), 3, 3
             self.bike.update(dt_s)
+            self.refFrame.setPosition(-self.bike._position[0], 0, 0) # Move the camera (follow the bike) (note the negative sign..)
             self.checkRamp(self.levelMgr.curRamp)    # TODO possibly move the checkRamp call into the playing substate?
 
             if self.bike.inAir:
                 # This is rudimentary "collision detection" (more like a boundary test) for determining when the bike lands (self.levelMgr.y_ground is ground level)
                 # TODO replace the BikePts2D(21).y > self.levelMgr.y_ground with an AABB computation / boundary test
 
-                if self.bike._velocity < 0 and self.bike.aabb._minPt[1] <= 0.0:  # TODO make sure that biker's yvel is 0 when on the ground; otherwise this test will trigger false positives
+                #if self.bike._velocity < 0 and self.bike.aabb._minPt[1] <= 0.0:  # TODO make sure that biker's yvel is 0 when on the ground; otherwise this test will trigger false positives
+                if self.bike._velocity[1] < 0 and self.bike.aabb._minPt[1] <= self.levelMgr.y_ground:  # TODO make sure that biker's yvel is 0 when on the ground; otherwise this test will trigger false positives
+                    # If you're here, you've landed
+                    self.bike._position[1] = self.levelMgr.y_ground# - 30
+                    self.bike._velocity[1] = 0.0
+                    self.gamestats.activeTrick = 0
+
                     # TODO after doing rough-cut aabb test, do more precise testing.. somehow. Maybe an intersection test of the wireframe with the ground?
-                    DidNotClearRamp = (BikePts2D(3).x < xAdd1)  # DidNotClearJump is based on which point on the bike touches the ground
+                    # TODO Maybe store ramp geometry in the level object; you're recalculating coordinates that you calculated in order to be able to draw the level. Add collision detection
+                    ramp_length = self.levelMgr.ramps[self.levelMgr.curRamp].length * coss(self.levelMgr.ramps[self.levelMgr.curRamp].incline)
+                    ramp_height = self.levelMgr.ramps[self.levelMgr.curRamp].length * sinn(self.levelMgr.ramps[self.levelMgr.curRamp].incline)
+                    ramp_gap = self.levelMgr.ramps[self.levelMgr.curRamp].dist
+
+                    launch_sx = self.levelMgr.ramps[self.levelMgr.curRamp].x
+                    launch_sy = self.levelMgr.ramps[self.levelMgr.curRamp].y
+
+                    launch_ex = self.levelMgr.ramps[self.levelMgr.curRamp].x + ramp_length
+                    launch_ey = self.levelMgr.ramps[self.levelMgr.curRamp].y + ramp_height
+
+                    land_ex = launch_ex + ramp_gap
+                    land_ey = launch_ey
+
+                    land_sx = land_ex + ramp_length
+                    land_sy = self.levelMgr.ramps[self.levelMgr.curRamp].y
+
+                    DidNotClearRamp = self.bike.aabb._minPt[0] < land_ex    # You didn't clear the jump if you land before the lip of the landing ramp # TODO make the landing calculation more robust. Should be able to land on the ramp
             
-                    y = self.levelMgr.y_ground - 30
-                    self.rider.yvel = 0
-            
-                    if bike.tricking or DidNotClearRamp :
+                    #import pdb; pdb.set_trace()
+                    if self.bike.tricking or DidNotClearRamp :
                         msg = ""
-                        if bike.tricking :
+                        if self.bike.tricking :
                             self.staticMsg['info'].changeText(getCrashedMsg(self.gamestats.crashPhrases))
                             # NOTE: we only set the message here. The drawStatus function will render the message.  But also NOTE: we'll need to make sure to clear out the txtStr property to clear out messages (e.g. "You crashed" messages)
 
@@ -440,7 +461,7 @@ class GameStateImpl(GameStateBase):
                         # Aside: I know the code is weird in this game; I'm porting from QBASIC.. give me a break
                         self.staticMsg['presskey'].changeText("Press <Enter> to continue.")
                         self.bike.crashed = True
-                        y = self.levelMgr.y_ground - 15
+                        self.bike._position[1] = self.levelMgr.y_ground - 15
             
                         if (self.bike.model.children['frame'].thy + 180) % 360 >= 270 and (self.bike.model.children['frame'].thy + 180) % 360 <= 90 :
                             self.bike.model.children['handlebar'].thz = 180
@@ -459,39 +480,40 @@ class GameStateImpl(GameStateBase):
                         #CALL RotateBar(self.bike.model.children['handlebar'].thx, self.bike.model.children['handlebar'].thy + 180, self.bike.model.children['handlebar'].thz)
 
                         # We compose rotation matrices in ZYX order, so they're applied in XYZ order
+                        # Note: There has to be a better way to access vars and functions.. These lines of code are super long...
                         self.bike.model.children['handlebar'].matRot = matrix.mMultmat( matrix.Matrix.matRotZ(self.bike.model.children['handlebar'].thz), matrix.Matrix.matRotY(self.bike.model.children['handlebar'].thy)  )
                         self.bike.model.children['handlebar'].matRot = matrix.mMultmat( self.bike.model.children['handlebar'].matRot, matrix.Matrix.matRotX(self.bike.model.children['handlebar'].thx) )
 
                         self.bike.model.children['frame'].matRot = matrix.mMultmat( matrix.Matrix.matRotZ(self.bike.model.children['frame'].thz), matrix.Matrix.matRotY(self.bike.model.children['frame'].thy)  )
                         self.bike.model.children['frame'].matRot = matrix.mMultmat( self.bike.model.children['frame'].matRot, matrix.Matrix.matRotX(self.bike.model.children['frame'].thx) )
 
-                        # Note: There has to be a better way to access vars and functions.. These lines of code are super long...
+                        self.bike._velocity[0] = 0.0                            # TODO maybe move this hard-coded velocity assignment into a physics simulation
 
-                        self.rider.xvel = 0
-            
-                    if not bike.crashed:
-                        self.levelMgr.curRamp = self.levelMgr.curRamp + 1   # TODO manager curRamp better. Maybe take a BSP-type approach? i.e, look at all ramps, but only process a ramp is the bike's x pos < ramp's x pos
-                    # NOTE the following substate change logic could just as easily go into a function (and maybe should?)
                     else:
-                        self.substate = PlayingSubstate.crashed
-
-                    # Note: the following stuff is what happens once a trick is landed. Perhaps put into a helper function
-                    self.bike.inAir = False
-                    gamestats.score = gamestats.score + self.gamestats.addScore
-                    self.gamestats.addScore = 0
-                    self.gamestats.numTricks = 0
-                    self.bike.model.children['frame'].thz = 0
-                    self.bike.model.children['handlebar'].thz = 0
-                    one = 15        #Tab stops
+                        # Note: the following stuff is what happens once a trick is landed. Perhaps put into a helper function
+                        self.bike.inAir = False
+                        self.gamestats.score = self.gamestats.score + self.gamestats.addScore
+                        self.gamestats.addScore = 0
+                        self.gamestats.numTricks = 0
+                        self.bike.model.thz = 0                         # Set the parent transformation to 0 deg about Z
+                        self.bike.model.children['frame'].thz = 0       # TODO: evaluate: is it necessary to also set child transforms after the parent transform? Probably yes
+                        self.bike.model.children['handlebar'].thz = 0
+                        one = 15        #Tab stops
             
-                if self.levelMgr.curRamp > self.levelMgr.numRamps:  # You've finished the level
+                    if self.bike.crashed:
+                        self.substate = PlayingSubstate.crashed
+                    else:
+                        self.levelMgr.curRamp += 1   # TODO manage curRamp better. Maybe take a BSP-type approach? i.e, look at all ramps, but only process a ramp is the bike's x pos < ramp's x pos
+                    # NOTE the following substate change logic could just as easily go into a function (and maybe should?)
+
+                if self.levelMgr.curRamp > len(self.levelMgr.ramps):  # You've finished the level
                     # TODO clean up this code; likely don't need to redo drawing here. Also, here, we should probably change to a different substate, and then handle the run summary there
                     ##CALL RotateBike(self.bike.model.children['frame'].thx, self.bike.model.children['frame'].thy + 180, self.bike.model.children['frame'].thz)
                     ##CALL RotateBar(self.bike.model.children['handlebar'].thx, self.bike.model.children['handlebar'].thy + 180, self.bike.model.children['handlebar'].thz)
                     ##self.levelMgr.drawLevel()
                     self.staticMsg['presskey'].changeText("Press <Enter> to continue.")
             
-                    if self.gamestats.score >= ScoreToBeat(self.levelMgr.currentLevel) :
+                    if self.gamestats.score >= self.levelMgr.scoreToBeat:
                         self.levelManager.levelFinished = True  # TODO evaluate whether this flag is necessary. If we need to stay in the level state for a while, then keep it. But if it makes more sense to increment the level counter here, and go to a new substate, then do that
                         # TODO as always, look at what function is being called here
                         self.staticMsg['info'].changeText(getBeatLevelMsg(self.gamestats.successPhrases))
@@ -613,18 +635,18 @@ class GameStateImpl(GameStateBase):
         
         # TODO what color are B and BF?? Maybe they're set by the bike colors?? I can't remember :-S. Pretty sure B mean bar color, and BF means bar fill color, or something like that.
         #LINE (bx - 1, by)-(bx + l + 1, by + w), BikeCol(1), B
-        #LINE (bx, by + 1)-(bx + l * (self.rider.xvel / self.rider.maxspd), by + w - 1), BikeCol(2), BF
+        #LINE (bx, by + 1)-(bx + l * (self.bike._velocity[0] / self.bike.rider.maxspd), by + w - 1), BikeCol(2), BF
 
-        if self.rider.maxspd == 0.0:
-            self.rider.maxspd = 1.0 # TODO delete this hack; the purpose of it is to simply get the game up and running, before implementing character selection
+        if self.bike.rider.maxspd == 0.0:
+            self.bike.rider.maxspd = 1.0 # TODO delete this hack; the purpose of it is to simply get the game up and running, before implementing character selection
         pygame.draw.line(self.appRef.surface_bg, (255,255,255), (bx - 1, by), (bx + l + 1, by + w))
-        pygame.draw.line(self.appRef.surface_bg, (0,255,0), (bx, by + 1), (bx + l * (self.bike._velocity[0] / self.rider.maxspd), by + w - 1))  # TODO we still need to make maxspd a property of something
+        pygame.draw.line(self.appRef.surface_bg, (0,255,0), (bx, by + 1), (bx + l * (self.bike._velocity[0] / self.bike.rider.maxspd), by + w - 1))  # TODO we still need to make maxspd a property of something
         
         
         #LOCATE 1, 25: PRINT "Score: "; LTRIM$(STR$(gamestats.score))
         #LOCATE 1, 40: PRINT "Level "; LTRIM$(STR$(self.levelMgr.currentLevel))
         #LOCATE 1, 50: PRINT "Score to beat = "; LTRIM$(STR$(ScoreToBeat(self.levelMgr.currentLevel))); " pts."
-        self.staticMsg['speed'].changeText("Speed: {}".format(self.rider.xvel))
+        self.staticMsg['speed'].changeText("Speed: {}".format(self.bike.rider.xvel))
         textSurfaceSpeed = self.staticMsg['speed'].getTextSurface(self.mm._font)    # Here we're using the message manager's font
         self.appRef.surface_bg.blit(textSurfaceSpeed, (self.staticMsg['speed']._position[0], self.staticMsg['speed']._position[1]))
 
@@ -683,138 +705,134 @@ class GameStateImpl(GameStateBase):
 
             if event.key == pygame.K_l:
                 if not self.bike.inAir:
-                    self.rider.xvel = self.rider.xvel + self.rider.pump
-                    #if self.rider.xvel >= self.rider.maxspd:
-                    #    self.rider.xvel = self.rider.maxspd
-             
-                    self.bike._velocity[0] += self.rider.pump
-                    if self.bike._velocity[0] >= self.rider.maxspd:
-                        self.bike._velocity[0] = self.rider.maxspd
+                    self.bike._velocity[0] += self.bike.rider.pump
+                    if self.bike._velocity[0] >= self.bike.rider.maxspd:
+                        self.bike._velocity[0] = self.bike.rider.maxspd
 
-            elif self.bike.inAir and not bike.tricking:
+            elif self.bike.inAir and not self.bike.tricking:
                 if event.key == pygame.K_j:
                     if self.kbStateMgr.trickModifier:
                         self.gamestats.activeTrick = 2   # Note: self.gamestats.activeTrick is the trick identifier (selects which trick animation to play)
-                        bike.tricking = -1
+                        self.bike.tricking = -1
                         self.gamestats.numTricks += 1
-                        TrickCounter = TrickCounter + 1
+                        self.levelMgr.trickCounter = self.levelMgr.trickCounter + 1
             
                     else:
                         self.gamestats.activeTrick = 1
-                        bike.tricking = -1
+                        self.bike.tricking = -1
                         self.gamestats.numTricks += 1
-                        TrickCounter = TrickCounter + 1
+                        self.levelMgr.trickCounter = self.levelMgr.trickCounter + 1
             
                 elif event.key == pygame.K_k:
                     if self.kbStateMgr.trickModifier:
                         self.gamestats.activeTrick = 4
-                        bike.tricking = -1
+                        self.bike.tricking = -1
                         self.gamestats.numTricks += 1
-                        TrickCounter = TrickCounter + 1
+                        self.levelMgr.trickCounter = self.levelMgr.trickCounter + 1
             
                     else:
                         self.gamestats.activeTrick = 3
-                        bike.tricking = -1
+                        self.bike.tricking = -1
                         MemAngle = self.bike.model.children['handlebar'].thy
                         self.gamestats.numTricks += 1
-                        TrickCounter = TrickCounter + 1
+                        self.levelMgr.trickCounter = self.levelMgr.trickCounter + 1
             
                 elif event.key == pygame.K_i:
                     if self.kbStateMgr.trickModifier:
                         self.gamestats.activeTrick = 16
-                        bike.tricking = -1
+                        self.bike.tricking = -1
                         MemAngle = self.bike.model.children['frame'].thz
                         self.gamestats.numTricks += 1
-                        TrickCounter = TrickCounter + 1
+                        self.levelMgr.trickCounter = self.levelMgr.trickCounter + 1
 
                     else:
                         self.gamestats.activeTrick = 5
-                        bike.tricking = -1
+                        self.bike.tricking = -1
                         MemAngle = self.bike.model.children['frame'].thz
                         self.gamestats.numTricks += 1
-                        TrickCounter = TrickCounter + 1
+                        self.levelMgr.trickCounter = self.levelMgr.trickCounter + 1
             
                 elif event.key == pygame.K_u:
                     if self.kbStateMgr.trickModifier:
                         self.gamestats.activeTrick = 9
-                        bike.tricking = -1
+                        self.bike.tricking = -1
                         self.gamestats.numTricks += 1
-                        TrickCounter = TrickCounter + 1
+                        self.levelMgr.trickCounter = self.levelMgr.trickCounter + 1
             
                     else:
                         self.gamestats.activeTrick = 7
-                        bike.tricking = -1
+                        self.bike.tricking = -1
                         self.gamestats.numTricks += 1
-                        TrickCounter = TrickCounter + 1
+                        self.levelMgr.trickCounter = self.levelMgr.trickCounter + 1
                 
                 elif event.key == pygame.K_o:
                     if self.kbStateMgr.trickModifier:
                         self.gamestats.activeTrick = 10
-                        bike.tricking = -1
+                        self.bike.tricking = -1
                         MemAngle = self.bike.model.children['frame'].thz
                         self.gamestats.numTricks += 1
-                        TrickCounter = TrickCounter + 1
+                        self.levelMgr.trickCounter = self.levelMgr.trickCounter + 1
             
                     else: 
                         self.gamestats.activeTrick = 8
-                        bike.tricking = -1
+                        self.bike.tricking = -1
                         self.gamestats.numTricks += 1
-                        TrickCounter = TrickCounter + 1
+                        self.levelMgr.trickCounter = self.levelMgr.trickCounter + 1
              
                 elif event.key == pygame.K_h:
                     if self.kbStateMgr.trickModifier:
                         self.gamestats.activeTrick = 12
-                        bike.tricking = -1
+                        self.bike.tricking = -1
                         self.gamestats.numTricks += 1
-                        TrickCounter = TrickCounter + 1
+                        self.levelMgr.trickCounter = self.levelMgr.trickCounter + 1
             
                     else:
                         self.gamestats.activeTrick = 11
-                        bike.tricking = -1
+                        self.bike.tricking = -1
                         self.gamestats.numTricks += 1
                         MemAngle = self.bike.model.children['frame'].thz
-                        TrickCounter = TrickCounter + 1
+                        self.levelMgr.trickCounter = self.levelMgr.trickCounter + 1
             
                 elif event.key == pygame.K_y:
                     if self.kbStateMgr.trickModifier:
                         self.gamestats.activeTrick = 14
-                        bike.tricking = -1
+                        self.bike.tricking = -1
                         self.gamestats.numTricks += 1
-                        TrickCounter = TrickCounter + 1
+                        self.levelMgr.trickCounter = self.levelMgr.trickCounter + 1
                         MemAngle = self.bike.model.children['frame'].thz
             
                     else: 
                         self.gamestats.activeTrick = 13
-                        bike.tricking = -1
+                        self.bike.tricking = -1
                         self.gamestats.numTricks += 1
-                        TrickCounter = TrickCounter + 1
+                        self.levelMgr.trickCounter = self.levelMgr.trickCounter + 1
                         MemAngle = self.bike.model.children['frame'].thz
             
                 elif event.key == pygame.K_n:
                     if self.kbStateMgr.trickModifier:
                         MemAngle = self.bike.model.children['frame'].thz
                         self.gamestats.activeTrick = 15
-                        bike.tricking = -1
+                        self.bike.tricking = -1
                         self.gamestats.numTricks += 1
-                        TrickCounter = TrickCounter + 1
+                        self.levelMgr.trickCounter = self.levelMgr.trickCounter + 1
             
                     else:
                         self.gamestats.activeTrick = 6
-                        bike.tricking = -1
+                        self.bike.tricking = -1
                         MemAngle = self.bike.model.children['frame'].thz
                         self.gamestats.numTricks += 1
-                        TrickCounter = TrickCounter + 1
+                        self.levelMgr.trickCounter = self.levelMgr.trickCounter + 1
             
             
                 #Lean back
                 elif event.key == pygame.K_q:
-                    self.bike.model.children['frame'].thz = self.bike.model.children['frame'].thz - self.rider.turn / 2
-                    self.bike.model.children['handlebar'].thz = self.bike.model.children['handlebar'].thz - self.rider.turn / 2
+                    self.bike.model.children['frame'].thz = self.bike.model.children['frame'].thz - self.bike.rider.turn / 2
+                    self.bike.model.children['handlebar'].thz = self.bike.model.children['handlebar'].thz - self.bike.rider.turn / 2
                 
                 #Lean forward
                 elif event.key == pygame.K_w:
-                    self.bike.model.children['frame'].thz = self.bike.model.children['frame'].thz + self.rider.turn / 2
-                    self.bike.model.children['handlebar'].thz = self.bike.model.children['handlebar'].thz + self.rider.turn / 2
+                    self.bike.model.children['frame'].thz = self.bike.model.children['frame'].thz + self.bike.rider.turn / 2
+                    self.bike.model.children['handlebar'].thz = self.bike.model.children['handlebar'].thz + self.bike.rider.turn / 2
                 pass
 
         elif event.type == pygame.KEYUP:
@@ -843,13 +861,13 @@ class GameStateImpl(GameStateBase):
             #import pdb; pdb.set_trace()
             #self.bike.model.thz = 360 - self.levelMgr.ramps[n].incline # set the top-level rotation angle (which will be processed when we need to know where points are, for drawing/colliding)
     
-            #self.bike._velocity[1] = self.rider.jump * (self.bike._velocity[0] * sinn(self.bike.model.thz)) + 2.25    #1.5707 # TODO do better math than this. You came up with these numbers just through trial and error.. what looked good
+            #self.bike._velocity[1] = self.bike.rider.jump * (self.bike._velocity[0] * sinn(self.bike.model.thz)) + 2.25    #1.5707 # TODO do better math than this. You came up with these numbers just through trial and error.. what looked good
             #self.bike._velocity[0] = self.bike._velocity[0] * coss(self.bike.model.thz)
             y = ey - 18 # TODO: Fix. Don't hardcode bike's y-position when jumping. Use collision detection, or otherwise math formulas to determine the bike's position on the ramp
     
             self.bike.model.thz = self.levelMgr.ramps[n].incline # set the top-level rotation angle (which will be processed when we need to know where points are, for drawing/colliding)
     
-            self.bike._velocity[1] = self.rider.jump * (self.bike._velocity[0] * sinn(self.bike.model.thz))    #1.5707 # TODO do better math than this. You came up with these numbers just through trial and error.. what looked good
+            self.bike._velocity[1] = self.bike.rider.jump * (self.bike._velocity[0] * sinn(self.bike.model.thz))    #1.5707 # TODO do better math than this. You came up with these numbers just through trial and error.. what looked good
             self.bike._velocity[0] = self.bike._velocity[0] * coss(self.bike.model.thz)
             self.bike.inAir = True
 

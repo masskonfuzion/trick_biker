@@ -206,6 +206,7 @@ class Bike(GameObj):
         self.gamestatsRef = None    # A reference to the game engine's gamestats object
         self.mmRef = None           # A reference to the game engine's message manager
         self.levelMgrRef = None     # A reference to the game engine's level manager (We can probably do better than assigning all of these references. Maybe give a reference to the game engine itself, and one to the gamestate)
+        self.rider = RiderType()    # rider replaced Biker from the QBASIC game
 
         self.crashed = False
         self.inAir = False
@@ -272,7 +273,7 @@ class Bike(GameObj):
         ##
         ##RESTORE BikerData
         ##FOR n = 1 TO BikeStyle
-        ##    READ Biker.maxspd, Biker.jump, Biker.pump, Biker.turn
+        ##    READ self.rider.maxspd, self.rider.jump, self.rider.pump, self.rider.turn
         ##NEXT n
         ##
         ### TODO move trick point initialization to be with level initializtion
@@ -316,12 +317,11 @@ class Bike(GameObj):
         self._velocity[0] += self._acceleration[0] * dt_s
         self._velocity[1] += self._acceleration[1] * dt_s
 
-        #Biker.yvel = Biker.yvel + 2.1   # The 2.1 here is some arbitrary constant found, probably, by experimentation # TODO delete this line
         self.model.position = Point3D(self._position[0], self._position[1], self._position[2])
 
         self.model.updateModelTransform()  # Translate/rotate the bike (NOTE: this is regular ol' motion; for tricking, see updateTrick)
         self.aabb.computeBounds(self.model) # TODO see aabb module for thoughts on computeBounds() vs update()  # TODO - once we've updated transforms, AABB can simply use _xpoints; remove the _xpoints computation from AABB
-        self.updateTrick( TODO )    # Make sure updateTrick cals the proper functions to set the bike's transform
+        self.updateTrick( self.gamestatsRef.activeTrick, dt_s )    # Make sure updateTrick cals the proper functions to set the bike's transform
 
     def draw(self, screen, matView=matrix.Matrix.matIdent()):
         self.model.draw(screen, matView=matView)
@@ -333,10 +333,10 @@ class Bike(GameObj):
     #Execute tricks
     #==============================================================================
     # TODO any call to updateTrick should be made from the bike's update() function
-    def updateTrick(self, n):
+    def updateTrick(self, n, dt_s):
         if n == 1:               #360 degree turn
-            self.model.children['handlebar'].thy = self.model.children['handlebar'].thy + (Biker.turn * 1) / 1.5
-            self.model.children['frame'].thy = self.model.children['frame'].thy + (Biker.turn * 1) / 1.5
+            self.model.children['handlebar'].thy = self.model.children['handlebar'].thy + (self.rider.turn * 1) / 1.5
+            self.model.children['frame'].thy = self.model.children['frame'].thy + (self.rider.turn * 1) / 1.5
             self.model.children['frame'].thz = self.model.children['frame'].thz + 1
             self.model.children['handlebar'].thz = self.model.children['handlebar'].thz + 1
             if self.model.children['frame'].thy % 360 == 0: # TODO for all modulo math, make sure we're properly testing against 0 or whatever number (make sure your ints are good)
@@ -344,7 +344,7 @@ class Bike(GameObj):
                 self.gamestatsRef.trickMsg = "360 Turn!!!"
         
         elif n == 2:               #Tailwhip
-            self.model.children['frame'].thy = self.model.children['frame'].thy + Biker.turn
+            self.model.children['frame'].thy = self.model.children['frame'].thy + self.rider.turn
             self.model.children['frame'].thz = self.model.children['frame'].thz + 1
             self.model.children['handlebar'].thz = self.model.children['handlebar'].thz + 1
             if self.model.children['frame'].thy % 360 == 0:
@@ -353,9 +353,9 @@ class Bike(GameObj):
         
         elif n == 3:               #180 degree barturn
             if self.trickPhase == 1:
-                self.model.children['handlebar'].thy = self.model.children['handlebar'].thy + Biker.turn
+                self.model.children['handlebar'].thy = self.model.children['handlebar'].thy + self.rider.turn
             if self.trickPhase == 6:
-                self.model.children['handlebar'].thy = self.model.children['handlebar'].thy - Biker.turn
+                self.model.children['handlebar'].thy = self.model.children['handlebar'].thy - self.rider.turn
          
             self.model.children['frame'].thz = self.model.children['frame'].thz + 1
             self.model.children['handlebar'].thz = self.model.children['handlebar'].thz + 1
@@ -369,7 +369,7 @@ class Bike(GameObj):
                 self.gamestatsRef.trickMsg = "X-Up!!!"
         
         elif n == 4:               #360 degree barspin
-            self.model.children['handlebar'].thy = self.model.children['handlebar'].thy + Biker.turn
+            self.model.children['handlebar'].thy = self.model.children['handlebar'].thy + self.rider.turn
             if self.model.children['handlebar'].thy % 360 == 0:
                 self.tricking = 0
                 self.gamestatsRef.trickMsg = "Barspin!!!"
@@ -379,8 +379,8 @@ class Bike(GameObj):
         
         elif n == 5:               #Backflip
             tfactor = 5 / 2
-            self.model.children['frame'].thz = self.model.children['frame'].thz - Biker.turn / tfactor
-            self.model.children['handlebar'].thz = self.model.children['handlebar'].thz - Biker.turn / tfactor
+            self.model.children['frame'].thz = self.model.children['frame'].thz - self.rider.turn / tfactor
+            self.model.children['handlebar'].thz = self.model.children['handlebar'].thz - self.rider.turn / tfactor
             if self.model.children['frame'].thz <= MemAngle - 330:
                 self.tricking = 0
                 MemAngle = 0
@@ -388,11 +388,11 @@ class Bike(GameObj):
         
         elif n == 6:               #Inverted 180
             tfactor = 5 / 2 #either 2 or 5/2
-            self.model.children['frame'].thx = self.model.children['frame'].thx + Biker.turn / tfactor
-            self.model.children['handlebar'].thx = self.model.children['handlebar'].thx + Biker.turn / tfactor
+            self.model.children['frame'].thx = self.model.children['frame'].thx + self.rider.turn / tfactor
+            self.model.children['handlebar'].thx = self.model.children['handlebar'].thx + self.rider.turn / tfactor
     
-            self.model.children['frame'].thy = self.model.children['frame'].thy + Biker.turn / tfactor
-            self.model.children['handlebar'].thy = self.model.children['handlebar'].thy + Biker.turn / tfactor
+            self.model.children['frame'].thy = self.model.children['frame'].thy + self.rider.turn / tfactor
+            self.model.children['handlebar'].thy = self.model.children['handlebar'].thy + self.rider.turn / tfactor
     
             self.model.children['frame'].thz = self.model.children['frame'].thz + 2
             self.model.children['handlebar'].thz = self.model.children['handlebar'].thz + 2
@@ -402,8 +402,8 @@ class Bike(GameObj):
                 self.gamestatsRef.trickMsg = "Inverted 180!!!"
         
         elif n == 7:           #Corkscrew (don't try this at home)
-            self.model.children['frame'].thx = self.model.children['frame'].thx + Biker.turn / 2
-            self.model.children['handlebar'].thx = self.model.children['handlebar'].thx + Biker.turn / 2
+            self.model.children['frame'].thx = self.model.children['frame'].thx + self.rider.turn / 2
+            self.model.children['handlebar'].thx = self.model.children['handlebar'].thx + self.rider.turn / 2
             self.model.children['frame'].thz = self.model.children['frame'].thz + 1
             self.model.children['handlebar'].thz = self.model.children['handlebar'].thz + 1
         
@@ -412,8 +412,8 @@ class Bike(GameObj):
                 self.gamestatsRef.trickMsg = "Corkscrew!!!"
         
         elif n == 8:           #Double Barspin Tailwhip
-            self.model.children['frame'].thy = self.model.children['frame'].thy - Biker.turn
-            self.model.children['handlebar'].thy = self.model.children['handlebar'].thy + Biker.turn * 2
+            self.model.children['frame'].thy = self.model.children['frame'].thy - self.rider.turn
+            self.model.children['handlebar'].thy = self.model.children['handlebar'].thy + self.rider.turn * 2
             self.model.children['frame'].thz = self.model.children['frame'].thz + 1
             self.model.children['handlebar'].thz = self.model.children['handlebar'].thz + 1
         
@@ -423,12 +423,12 @@ class Bike(GameObj):
         
         elif n == 9:           #Wicked Tabletop
             if self.trickPhase == 1:
-                self.model.children['frame'].thx = self.model.children['frame'].thx + Biker.turn / 2
-                self.model.children['handlebar'].thx = self.model.children['handlebar'].thx + Biker.turn / 2
+                self.model.children['frame'].thx = self.model.children['frame'].thx + self.rider.turn / 2
+                self.model.children['handlebar'].thx = self.model.children['handlebar'].thx + self.rider.turn / 2
 
             if self.trickPhase == 5:
-                self.model.children['frame'].thx = self.model.children['frame'].thx - Biker.turn / 2
-                self.model.children['handlebar'].thx = self.model.children['handlebar'].thx - Biker.turn / 2
+                self.model.children['frame'].thx = self.model.children['frame'].thx - self.rider.turn / 2
+                self.model.children['handlebar'].thx = self.model.children['handlebar'].thx - self.rider.turn / 2
          
             self.model.children['frame'].thz = self.model.children['frame'].thz + 2
             self.model.children['handlebar'].thz = self.model.children['handlebar'].thz + 2
@@ -442,10 +442,10 @@ class Bike(GameObj):
         
         elif n == 10:        #Twisting Corkscrew
             tfactor = 5 / 2
-            self.model.children['frame'].thz = self.model.children['frame'].thz - Biker.turn / tfactor
-            self.model.children['handlebar'].thz = self.model.children['handlebar'].thz - Biker.turn / tfactor
-            self.model.children['frame'].thx = self.model.children['frame'].thx - Biker.turn / tfactor
-            self.model.children['handlebar'].thx = self.model.children['handlebar'].thx - Biker.turn / tfactor
+            self.model.children['frame'].thz = self.model.children['frame'].thz - self.rider.turn / tfactor
+            self.model.children['handlebar'].thz = self.model.children['handlebar'].thz - self.rider.turn / tfactor
+            self.model.children['frame'].thx = self.model.children['frame'].thx - self.rider.turn / tfactor
+            self.model.children['handlebar'].thx = self.model.children['handlebar'].thx - self.rider.turn / tfactor
                      
             if self.model.children['frame'].thz <= MemAngle - 330 :
                 self.model.children['frame'].thx = 0
@@ -457,14 +457,14 @@ class Bike(GameObj):
         
         elif n == 11:            #Backflip Tailwhip
             if self.trickPhase == 1 or self.trickPhase == 2 or self.trickPhase == 3:
-                self.model.children['frame'].thz = self.model.children['frame'].thz - Biker.turn * (1 / 3)
-                self.model.children['handlebar'].thz = self.model.children['handlebar'].thz - Biker.turn * (1 / 3)
+                self.model.children['frame'].thz = self.model.children['frame'].thz - self.rider.turn * (1 / 3)
+                self.model.children['handlebar'].thz = self.model.children['handlebar'].thz - self.rider.turn * (1 / 3)
         
             if self.trickPhase == 1 and self.model.children['frame'].thz <= MemAngle - 90:
                 self.trickPhase = 2
         
             if self.trickPhase == 2:
-                self.model.children['frame'].thy = self.model.children['frame'].thy + Biker.turn / (3 / 2)
+                self.model.children['frame'].thy = self.model.children['frame'].thy + self.rider.turn / (3 / 2)
         
             if self.trickPhase == 2 and self.model.children['frame'].thy % 360 == 0:
                 self.trickPhase = 3
@@ -479,15 +479,15 @@ class Bike(GameObj):
             self.model.children['frame'].thz = self.model.children['frame'].thz + 1
             self.model.children['handlebar'].thz = self.model.children['handlebar'].thz + 1
             if self.trickPhase == 1:
-                self.model.children['frame'].thy = self.model.children['frame'].thy + Biker.turn / 2
-                self.model.children['handlebar'].thy = self.model.children['handlebar'].thy + Biker.turn / 2
+                self.model.children['frame'].thy = self.model.children['frame'].thy + self.rider.turn / 2
+                self.model.children['handlebar'].thy = self.model.children['handlebar'].thy + self.rider.turn / 2
 
             if self.trickPhase == 2:
-                self.model.children['handlebar'].thy = self.model.children['handlebar'].thy - Biker.turn
+                self.model.children['handlebar'].thy = self.model.children['handlebar'].thy - self.rider.turn
 
             if self.trickPhase == 3: 
-                self.model.children['frame'].thy = self.model.children['frame'].thy + Biker.turn / 2
-                self.model.children['handlebar'].thy = self.model.children['handlebar'].thy - Biker.turn
+                self.model.children['frame'].thy = self.model.children['frame'].thy + self.rider.turn / 2
+                self.model.children['handlebar'].thy = self.model.children['handlebar'].thy - self.rider.turn
         
             if self.trickPhase == 1 and self.model.children['frame'].thy % 180 == 0:
                 self.trickPhase = 2
@@ -500,11 +500,11 @@ class Bike(GameObj):
         
         elif n == 13:                        #Air Endo
             if self.trickPhase == 1:
-                self.model.children['frame'].thz = self.model.children['frame'].thz + Biker.turn * (1 / 4)
+                self.model.children['frame'].thz = self.model.children['frame'].thz + self.rider.turn * (1 / 4)
                 self.model.children['handlebar'].thz = self.model.children['frame'].thz
 
             if self.trickPhase > 4:
-                self.model.children['frame'].thz = self.model.children['frame'].thz - Biker.turn * (1 / 4)
+                self.model.children['frame'].thz = self.model.children['frame'].thz - self.rider.turn * (1 / 4)
                 self.model.children['handlebar'].thz = self.model.children['frame'].thz
         
             if self.model.children['frame'].thz >= MemAngle + 60:
@@ -518,7 +518,7 @@ class Bike(GameObj):
         
         elif n == 14:                        #Air Endo plus bar twist
             if self.trickPhase == 1:
-                self.model.children['frame'].thz = self.model.children['frame'].thz + Biker.turn * (1 / 4)
+                self.model.children['frame'].thz = self.model.children['frame'].thz + self.rider.turn * (1 / 4)
                 self.model.children['handlebar'].thz = self.model.children['frame'].thz
             
             if self.trickPhase == 1 and self.model.children['frame'].thz >= MemAngle + 60:
@@ -528,16 +528,16 @@ class Bike(GameObj):
                 self.trickPhase = 4
         
             if self.trickPhase == 2:
-                self.model.children['handlebar'].thy = self.model.children['handlebar'].thy - Biker.turn / 2
+                self.model.children['handlebar'].thy = self.model.children['handlebar'].thy - self.rider.turn / 2
             
             if (self.trickPhase == 2 or self.trickPhase == 3) and self.model.children['handlebar'].thy % 180 == 0:
                 self.trickPhase = self.trickPhase + 1
         
             if self.trickPhase == 3:
-                self.model.children['handlebar'].thy = self.model.children['handlebar'].thy + Biker.turn / 2
+                self.model.children['handlebar'].thy = self.model.children['handlebar'].thy + self.rider.turn / 2
         
             if self.trickPhase == 4:
-                self.model.children['frame'].thz = self.model.children['frame'].thz - Biker.turn * (1 / 4)
+                self.model.children['frame'].thz = self.model.children['frame'].thz - self.rider.turn * (1 / 4)
                 self.model.children['handlebar'].thz = self.model.children['frame'].thz
             
             if self.trickPhase == 4 and self.model.children['frame'].thz <= MemAngle + 30:
@@ -548,17 +548,17 @@ class Bike(GameObj):
         
         elif n == 15:                #Turndown
             if self.trickPhase == 1:
-                self.model.children['frame'].thy = self.model.children['frame'].thy - Biker.turn * (1 / 2)
-                self.model.children['frame'].thz = self.model.children['frame'].thz + Biker.turn * (1 / 2)
-                self.model.children['handlebar'].thz = self.model.children['handlebar'].thz + Biker.turn * (1 / 2)
+                self.model.children['frame'].thy = self.model.children['frame'].thy - self.rider.turn * (1 / 2)
+                self.model.children['frame'].thz = self.model.children['frame'].thz + self.rider.turn * (1 / 2)
+                self.model.children['handlebar'].thz = self.model.children['handlebar'].thz + self.rider.turn * (1 / 2)
             
             if self.model.children['frame'].thy % 90 == 0:
                 self.trickPhase = self.trickPhase + 1
         
             if self.trickPhase == 6:
-                self.model.children['frame'].thy = self.model.children['frame'].thy + Biker.turn * (1 / 2)
-                self.model.children['frame'].thz = self.model.children['frame'].thz - Biker.turn * (1 / 2)
-                self.model.children['handlebar'].thz = self.model.children['handlebar'].thz - Biker.turn * (1 / 2)
+                self.model.children['frame'].thy = self.model.children['frame'].thy + self.rider.turn * (1 / 2)
+                self.model.children['frame'].thz = self.model.children['frame'].thz - self.rider.turn * (1 / 2)
+                self.model.children['handlebar'].thz = self.model.children['handlebar'].thz - self.rider.turn * (1 / 2)
         
             if self.trickPhase == 6 and self.model.children['frame'].thy % 360 == 0:
                 self.model.children['frame'].thz = self.model.children['frame'].thz + 30
@@ -572,22 +572,22 @@ class Bike(GameObj):
         
         elif n == 16:            #Flair
             if self.trickPhase == 1: #or self.trickPhase == 3
-                self.model.children['frame'].thz = self.model.children['frame'].thz - (Biker.turn * .4)
-                self.model.children['handlebar'].thz = self.model.children['handlebar'].thz - (Biker.turn * .4)
+                self.model.children['frame'].thz = self.model.children['frame'].thz - (self.rider.turn * .4)
+                self.model.children['handlebar'].thz = self.model.children['handlebar'].thz - (self.rider.turn * .4)
         
             if self.trickPhase == 3:
-                self.model.children['frame'].thz = self.model.children['frame'].thz - (Biker.turn * .5)
-                self.model.children['handlebar'].thz = self.model.children['handlebar'].thz - (Biker.turn * .5)
+                self.model.children['frame'].thz = self.model.children['frame'].thz - (self.rider.turn * .5)
+                self.model.children['handlebar'].thz = self.model.children['handlebar'].thz - (self.rider.turn * .5)
         
             if self.trickPhase == 1 and self.model.children['frame'].thz <= MemAngle - 135:
                 self.trickPhase = 2
         
             if self.trickPhase == 2:
-                self.model.children['frame'].thz = self.model.children['frame'].thz - (Biker.turn * .25)
-                self.model.children['handlebar'].thz = self.model.children['handlebar'].thz - (Biker.turn * .25)
+                self.model.children['frame'].thz = self.model.children['frame'].thz - (self.rider.turn * .25)
+                self.model.children['handlebar'].thz = self.model.children['handlebar'].thz - (self.rider.turn * .25)
         
-                self.model.children['frame'].thy = self.model.children['frame'].thy + (Biker.turn * .5)
-                self.model.children['handlebar'].thy = self.model.children['handlebar'].thy + (Biker.turn * .5)
+                self.model.children['frame'].thy = self.model.children['frame'].thy + (self.rider.turn * .5)
+                self.model.children['handlebar'].thy = self.model.children['handlebar'].thy + (self.rider.turn * .5)
         
             if self.trickPhase == 2 and self.model.children['frame'].thy % 360 == 0:
                 self.trickPhase = 3
@@ -650,7 +650,6 @@ class LevelManager(object):
         self.finalLevel = 0     # Initialize final level when loading level data or something
         self.curRamp = 0
 
-        self.numRamps = 0
         self.y_ground = 0
 
         self.ramps = []
@@ -676,6 +675,7 @@ class LevelManager(object):
         self.curRamp = 0         	# The current ramp in the level (this probably won't be necessary once we have legit collision detection
         #NumTricks = 0       	    # Tracks how many tricks the player has performed (belongs in game stats class) # TODO probably delete this line
         #TrickCounter = 0    	    # Hmm, not sure how this differs from NumTricks. TODO read the code             # TODO probably delete this line
+        self.trickCounter = 0
         MsgFrames = 0       	    # Used in messaging (how many frames to leave the message up for)
         msg = ""           		    # Used in messaging - the message text itself
     
