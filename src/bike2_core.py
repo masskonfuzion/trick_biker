@@ -8,7 +8,7 @@ import logging
 import math
 from pymkfgame.mkfmath import matrix
 from pymkfgame.mkfmath import vector
-from pymkfgame.mkfmath.common import DEGTORAD, coss, sinn
+from pymkfgame.mkfmath.common import DEGTORAD, coss, sinn, EPSILON
 from pymkfgame.collision import aabb
 from pymkfgame.gameobj.gameobj import GameObj
 
@@ -210,14 +210,16 @@ class Bike(GameObj):
 
         self.crashed = False
         self.inAir = False
-        self.tricking = False
+        self.tricking = False       # TODO make sure to keep tricking data type consistent. It's bool here, int elsewhere
         self.trickPhase = 1
+        self.memAngle = 0
 
     def Init(self):
         """ Initialize bike object
         
             NOTE: This replaces QBASIC InitBike()
         """
+        # TODO clean up Init(). There should be a separate model loading that occurs when the Bike object is created, but not every time the bike is reset (e.g. when it crash-lands)
         dirname = os.path.dirname( sys.argv[0] )
         #print "dirname:{}".format("/".join((dirname, "../data/bike_model.json")))
         with open(os.path.normpath("/".join((dirname, "../data/bike_model.json"))), 'r') as fd:
@@ -262,6 +264,12 @@ class Bike(GameObj):
 
         self.model.updateModelTransform()      # This is necessary to compute transformed points, to be able to draw the bike right away
 
+        # TODO: remove duplicate inits. We have these vars in the constructor for reference; they should be managed outside the constructor
+        self.crashed = False
+        self.inAir = False
+        self.tricking = False
+        self.trickPhase = 1
+
         ##TODO finish converting the commented-out code to either be in a bike member function, or otherwise wherever it belongs
         ###BikeStyle = 5
         ##
@@ -302,7 +310,6 @@ class Bike(GameObj):
             if not self.tricking :
                 # If we're in the air, and not tricking, then we're slightly rotating. Update the bike's top-level transform
                 self.model.thz = self.model.thz - (30 * dt_s)        # Pitch the nose down by a small angular velocity (to approximate the nose drifting towards the ground when the biker hangs in the air)
-                #self.model.thz = self.model.thz + 1
                 #print self.model.thz
         else:
             self._acceleration = vector.vSub(self._acceleration, self.levelMgrRef.gravity)
@@ -334,281 +341,348 @@ class Bike(GameObj):
     #==============================================================================
     # TODO any call to updateTrick should be made from the bike's update() function
     def updateTrick(self, n, dt_s):
-        if n == 1:               #360 degree turn
-            self.model.children['handlebar'].thy = self.model.children['handlebar'].thy + (self.rider.turn * 1) / 1.5
-            self.model.children['frame'].thy = self.model.children['frame'].thy + (self.rider.turn * 1) / 1.5
-            self.model.children['frame'].thz = self.model.children['frame'].thz + 1
-            self.model.children['handlebar'].thz = self.model.children['handlebar'].thz + 1
-            if self.model.children['frame'].thy % 360 == 0: # TODO for all modulo math, make sure we're properly testing against 0 or whatever number (make sure your ints are good)
-                self.tricking = 0
-                self.gamestatsRef.trickMsg = "360 Turn!!!"
-        
-        elif n == 2:               #Tailwhip
-            self.model.children['frame'].thy = self.model.children['frame'].thy + self.rider.turn
-            self.model.children['frame'].thz = self.model.children['frame'].thz + 1
-            self.model.children['handlebar'].thz = self.model.children['handlebar'].thz + 1
-            if self.model.children['frame'].thy % 360 == 0:
-                self.tricking = 0
-                self.gamestatsRef.trickMsg = "Tailwhip!!!"
-        
-        elif n == 3:               #180 degree barturn
-            if self.trickPhase == 1:
-                self.model.children['handlebar'].thy = self.model.children['handlebar'].thy + self.rider.turn
-            if self.trickPhase == 6:
-                self.model.children['handlebar'].thy = self.model.children['handlebar'].thy - self.rider.turn
-         
-            self.model.children['frame'].thz = self.model.children['frame'].thz + 1
-            self.model.children['handlebar'].thz = self.model.children['handlebar'].thz + 1
-         
-            if self.model.children['handlebar'].thy % 90 == 0:
-                self.trickPhase = self.trickPhase + 1
-            if self.model.children['handlebar'].thy == MemAngle: # TODO MemAngle used to be a global var.. Fix this!
-                self.tricking = 0
-                MemAngle = 0
-                self.trickPhase = 1
-                self.gamestatsRef.trickMsg = "X-Up!!!"
-        
-        elif n == 4:               #360 degree barspin
-            self.model.children['handlebar'].thy = self.model.children['handlebar'].thy + self.rider.turn
-            if self.model.children['handlebar'].thy % 360 == 0:
-                self.tricking = 0
-                self.gamestatsRef.trickMsg = "Barspin!!!"
+        if self.tricking:
+            if n == 1:               #360 degree turn
+                # Test zero crossing for angle.  # TODO make this into a general function
+                rot_vel = self.rider.turn * dt_s
+                self.model.thz += dt_s  # inject some nose angle drift into the equation
+                if self.model.thy <= 360.0 and (self.model.thy + rot_vel) > 360.0:  
+                    # if current angle < threshold and angular velocity sweeps across threshold in this update
+                    self.model.thy = 0.0    # Snap bike model Y rotation angle to 0
+                    self.tricking = 0
+                    self.gamestatsRef.trickMsg = "360 Turn!!!"
+                else:
+                    self.model.thy += rot_vel
+            
+            elif n == 2:               #Tailwhip
+                rot_vel = self.rider.turn * dt_s
+                self.model.thz += dt_s  # inject some nose angle drift
+                if self.model.children['frame'].thy <= 360.0 and (self.model.children['frame'].thy + rot_vel) > 360.0:  
+                    self.model.children['frame'].thy = 0.0  # Snap bike frame to 0 Y angle
+                    self.tricking = 0
+                    self.gamestatsRef.trickMsg = "Tailwhip!!!"
+                else:
+                    self.model.children['frame'].thy += rot_vel
 
-            self.model.children['frame'].thz = self.model.children['frame'].thz + 1
-            self.model.children['handlebar'].thz = self.model.children['handlebar'].thz + 1
-        
-        elif n == 5:               #Backflip
-            tfactor = 5 / 2
-            self.model.children['frame'].thz = self.model.children['frame'].thz - self.rider.turn / tfactor
-            self.model.children['handlebar'].thz = self.model.children['handlebar'].thz - self.rider.turn / tfactor
-            if self.model.children['frame'].thz <= MemAngle - 330:
-                self.tricking = 0
-                MemAngle = 0
-                self.gamestatsRef.trickMsg = "Backflip!!!"
-        
-        elif n == 6:               #Inverted 180
-            tfactor = 5 / 2 #either 2 or 5/2
-            self.model.children['frame'].thx = self.model.children['frame'].thx + self.rider.turn / tfactor
-            self.model.children['handlebar'].thx = self.model.children['handlebar'].thx + self.rider.turn / tfactor
-    
-            self.model.children['frame'].thy = self.model.children['frame'].thy + self.rider.turn / tfactor
-            self.model.children['handlebar'].thy = self.model.children['handlebar'].thy + self.rider.turn / tfactor
-    
-            self.model.children['frame'].thz = self.model.children['frame'].thz + 2
-            self.model.children['handlebar'].thz = self.model.children['handlebar'].thz + 2
-    
-            if self.model.children['frame'].thx % 360 == 0 :
-                self.tricking = 0
-                self.gamestatsRef.trickMsg = "Inverted 180!!!"
-        
-        elif n == 7:           #Corkscrew (don't try this at home)
-            self.model.children['frame'].thx = self.model.children['frame'].thx + self.rider.turn / 2
-            self.model.children['handlebar'].thx = self.model.children['handlebar'].thx + self.rider.turn / 2
-            self.model.children['frame'].thz = self.model.children['frame'].thz + 1
-            self.model.children['handlebar'].thz = self.model.children['handlebar'].thz + 1
-        
-            if self.model.children['frame'].thx % 360 == 0:
-                self.tricking = 0
-                self.gamestatsRef.trickMsg = "Corkscrew!!!"
-        
-        elif n == 8:           #Double Barspin Tailwhip
-            self.model.children['frame'].thy = self.model.children['frame'].thy - self.rider.turn
-            self.model.children['handlebar'].thy = self.model.children['handlebar'].thy + self.rider.turn * 2
-            self.model.children['frame'].thz = self.model.children['frame'].thz + 1
-            self.model.children['handlebar'].thz = self.model.children['handlebar'].thz + 1
-        
-            if self.model.children['frame'].thy % 360 == 0:
-                self.tricking = 0
-                self.gamestatsRef.trickMsg = "Double Barspin/Tailwhip!!!"
-        
-        elif n == 9:           #Wicked Tabletop
-            if self.trickPhase == 1:
-                self.model.children['frame'].thx = self.model.children['frame'].thx + self.rider.turn / 2
-                self.model.children['handlebar'].thx = self.model.children['handlebar'].thx + self.rider.turn / 2
-
-            if self.trickPhase == 5:
-                self.model.children['frame'].thx = self.model.children['frame'].thx - self.rider.turn / 2
-                self.model.children['handlebar'].thx = self.model.children['handlebar'].thx - self.rider.turn / 2
-         
-            self.model.children['frame'].thz = self.model.children['frame'].thz + 2
-            self.model.children['handlebar'].thz = self.model.children['handlebar'].thz + 2
-         
-            if self.model.children['frame'].thx % 90 == 0:
-                self.trickPhase = self.trickPhase + 1
-            if self.model.children['frame'].thx % 360 == 0:
-                self.tricking = 0
-                self.trickPhase = 1
-                self.gamestatsRef.trickMsg = "Tabletop!!!"
-        
-        elif n == 10:        #Twisting Corkscrew
-            tfactor = 5 / 2
-            self.model.children['frame'].thz = self.model.children['frame'].thz - self.rider.turn / tfactor
-            self.model.children['handlebar'].thz = self.model.children['handlebar'].thz - self.rider.turn / tfactor
-            self.model.children['frame'].thx = self.model.children['frame'].thx - self.rider.turn / tfactor
-            self.model.children['handlebar'].thx = self.model.children['handlebar'].thx - self.rider.turn / tfactor
-                     
-            if self.model.children['frame'].thz <= MemAngle - 330 :
-                self.model.children['frame'].thx = 0
-                self.model.children['handlebar'].thx = 0
-                self.tricking = 0
-                MemAngle = 0
-                self.trickPhase = 1
-                self.gamestatsRef.trickMsg = "Twisting Corkscrew!!!"
-        
-        elif n == 11:            #Backflip Tailwhip
-            if self.trickPhase == 1 or self.trickPhase == 2 or self.trickPhase == 3:
-                self.model.children['frame'].thz = self.model.children['frame'].thz - self.rider.turn * (1 / 3)
-                self.model.children['handlebar'].thz = self.model.children['handlebar'].thz - self.rider.turn * (1 / 3)
-        
-            if self.trickPhase == 1 and self.model.children['frame'].thz <= MemAngle - 90:
-                self.trickPhase = 2
-        
-            if self.trickPhase == 2:
-                self.model.children['frame'].thy = self.model.children['frame'].thy + self.rider.turn / (3 / 2)
-        
-            if self.trickPhase == 2 and self.model.children['frame'].thy % 360 == 0:
-                self.trickPhase = 3
-        
-            if self.model.children['frame'].thz <= MemAngle - 330:
-                self.tricking = 0
-                MemAngle = 0
-                self.trickPhase = 1
-                self.gamestatsRef.trickMsg = "Backflip Tailwhip!!!"
+            
+            elif n == 3:               #180 degree barturn
+                # TODO revisit the x-up. I'm not sure if it's working correctly
+                rot_vel = self.rider.turn * dt_s
+                self.model.thz += dt_s  # inject some nose angle drift
+                if self.trickPhase == 1:
+                    self.model.children['handlebar'].thy = self.model.children['handlebar'].thy + rot_vel
+                if self.trickPhase == 6:
+                    self.model.children['handlebar'].thy = self.model.children['handlebar'].thy - rot_vel
              
-        elif n == 12:                    #360 turn + 360 barspin
-            self.model.children['frame'].thz = self.model.children['frame'].thz + 1
-            self.model.children['handlebar'].thz = self.model.children['handlebar'].thz + 1
-            if self.trickPhase == 1:
-                self.model.children['frame'].thy = self.model.children['frame'].thy + self.rider.turn / 2
-                self.model.children['handlebar'].thy = self.model.children['handlebar'].thy + self.rider.turn / 2
-
-            if self.trickPhase == 2:
-                self.model.children['handlebar'].thy = self.model.children['handlebar'].thy - self.rider.turn
-
-            if self.trickPhase == 3: 
-                self.model.children['frame'].thy = self.model.children['frame'].thy + self.rider.turn / 2
-                self.model.children['handlebar'].thy = self.model.children['handlebar'].thy - self.rider.turn
-        
-            if self.trickPhase == 1 and self.model.children['frame'].thy % 180 == 0:
-                self.trickPhase = 2
-            if self.trickPhase == 2 and self.model.children['handlebar'].thy % 360 == 0:
-                self.trickPhase = 3
-            if self.trickPhase == 3 and self.model.children['frame'].thy % 360 == 0:
-                self.tricking = 0
-                self.trickPhase = 1
-                self.gamestatsRef.trickMsg = "360 Turn + Barspin!!!"
-        
-        elif n == 13:                        #Air Endo
-            if self.trickPhase == 1:
-                self.model.children['frame'].thz = self.model.children['frame'].thz + self.rider.turn * (1 / 4)
-                self.model.children['handlebar'].thz = self.model.children['frame'].thz
-
-            if self.trickPhase > 4:
-                self.model.children['frame'].thz = self.model.children['frame'].thz - self.rider.turn * (1 / 4)
-                self.model.children['handlebar'].thz = self.model.children['frame'].thz
-        
-            if self.model.children['frame'].thz >= MemAngle + 60:
-                self.trickPhase = self.trickPhase + 1
-
-            if self.trickPhase > 4 and self.model.children['frame'].thz <= MemAngle + 30:
-                self.tricking = 0
-                self.trickPhase = 1
-                MemAngle = 0
-                self.gamestatsRef.trickMsg = "Air Endo!!!"
-        
-        elif n == 14:                        #Air Endo plus bar twist
-            if self.trickPhase == 1:
-                self.model.children['frame'].thz = self.model.children['frame'].thz + self.rider.turn * (1 / 4)
-                self.model.children['handlebar'].thz = self.model.children['frame'].thz
+                if self.model.children['handlebar'].thy < 90.0 and (self.model.children['handlebar'].thy + rot_vel) >= 90.0 or \
+                   self.model.children['handlebar'].thy < 180.0 and (self.model.children['handlebar'].thy + rot_vel) >= 180.0 or \
+                   self.model.children['handlebar'].thy < 270.0 and (self.model.children['handlebar'].thy + rot_vel) >= 270.0 or \
+                   self.model.children['handlebar'].thy < 360.0 and (self.model.children['handlebar'].thy + rot_vel) >= 360.0:
+                #if self.model.children['handlebar'].thy % 90 == 0:
+                    self.trickPhase = self.trickPhase + 1
+                #if self.model.children['handlebar'].thy == self.memAngle:
+                if self.model.children['handlebar'].thy <= self.memAngle and self.model.children['handlebar'].thy + rot_vel > self.memAngle:
+                    self.tricking = 0
+                    self.model.children['handlebar'].thy = self.memAngle
+                    self.memAngle = 0
+                    self.trickPhase = 1
+                    self.gamestatsRef.trickMsg = "X-Up!!!"
             
-            if self.trickPhase == 1 and self.model.children['frame'].thz >= MemAngle + 60:
-                self.trickPhase = 2
+            elif n == 4:               #360 degree barspin
+                #if self.model.children['handlebar'].thy % 360 == 0:
+                rot_vel = self.rider.turn * dt_s
+                self.model.thz += dt_s  # inject some nose angle drift
+                if self.model.children['handlebar'].thy <= 360 and self.model.children['handlebar'].thy + rot_vel > 360.0:
+                    self.tricking = 0
+                    self.gamestatsRef.trickMsg = "Barspin!!!"
+                else:
+                    self.model.children['handlebar'].thy += self.rider.turn * dt_s
+            
+            elif n == 5:               #Backflip
+                tfactor = 0.6   # Arbitrary multiplier to slow down rotation rate of backflip
+                rot_vel = self.rider.turn * tfactor * dt_s
+                if self.model.thz <= self.memAngle - 15 and (self.model.thz + rot_vel) % 360.0 > self.memAngle - 15:
+                    self.tricking = 0
+                    self.model.thz = self.memAngle
+                    self.memAngle = 0
+                    self.gamestatsRef.trickMsg = "Backflip!!!"
+                else:
+                    self.model.thz = (self.model.thz + rot_vel) % 360.0
 
-            if self.trickPhase == 3 and self.model.children['handlebar'].thy % 360 == 0:
-                self.trickPhase = 4
-        
-            if self.trickPhase == 2:
-                self.model.children['handlebar'].thy = self.model.children['handlebar'].thy - self.rider.turn / 2
             
-            if (self.trickPhase == 2 or self.trickPhase == 3) and self.model.children['handlebar'].thy % 180 == 0:
-                self.trickPhase = self.trickPhase + 1
-        
-            if self.trickPhase == 3:
-                self.model.children['handlebar'].thy = self.model.children['handlebar'].thy + self.rider.turn / 2
-        
-            if self.trickPhase == 4:
-                self.model.children['frame'].thz = self.model.children['frame'].thz - self.rider.turn * (1 / 4)
-                self.model.children['handlebar'].thz = self.model.children['frame'].thz
+            elif n == 6:               #Inverted 180    # .... isn't this a 360??
+                tfactor = 5 / 2 #either 2 or 5/2
+                #self.model.children['frame'].thx = self.model.children['frame'].thx + self.rider.turn / tfactor
+                #self.model.children['handlebar'].thx = self.model.children['handlebar'].thx + self.rider.turn / tfactor
+                rot_vel_x = self.rider.turn * dt_s * .6
+                self.model.thx += rot_vel_x
+    
+                #self.model.children['frame'].thy = self.model.children['frame'].thy + self.rider.turn / tfactor
+                #self.model.children['handlebar'].thy = self.model.children['handlebar'].thy + self.rider.turn / tfactor
+                rot_vel_y = self.rider.turn * dt_s * .6
+                self.model.thy += rot_vel_y
+    
+                #self.model.children['frame'].thz = self.model.children['frame'].thz + 2
+                #self.model.children['handlebar'].thz = self.model.children['handlebar'].thz + 2
+                rot_vel_z = -self.rider.turn * dt_s * .05
+                self.model.thz += rot_vel_z
+    
+                #if self.model.children['frame'].thx % 360 == 0 :
+                if self.model.thx <= 360 and self.model.thx + rot_vel_x > 360.0:
+                    self.tricking = 0
+                    self.model.thx = 0
+                    self.gamestatsRef.trickMsg = "Inverted 180!!!"
             
-            if self.trickPhase == 4 and self.model.children['frame'].thz <= MemAngle + 30:
-                self.tricking = 0
-                self.trickPhase = 1
-                MemAngle = 0
-                self.gamestatsRef.trickMsg = "Air Endo + Bar Twist!!!"
-        
-        elif n == 15:                #Turndown
-            if self.trickPhase == 1:
-                self.model.children['frame'].thy = self.model.children['frame'].thy - self.rider.turn * (1 / 2)
-                self.model.children['frame'].thz = self.model.children['frame'].thz + self.rider.turn * (1 / 2)
-                self.model.children['handlebar'].thz = self.model.children['handlebar'].thz + self.rider.turn * (1 / 2)
-            
-            if self.model.children['frame'].thy % 90 == 0:
-                self.trickPhase = self.trickPhase + 1
-        
-            if self.trickPhase == 6:
-                self.model.children['frame'].thy = self.model.children['frame'].thy + self.rider.turn * (1 / 2)
-                self.model.children['frame'].thz = self.model.children['frame'].thz - self.rider.turn * (1 / 2)
-                self.model.children['handlebar'].thz = self.model.children['handlebar'].thz - self.rider.turn * (1 / 2)
-        
-            if self.trickPhase == 6 and self.model.children['frame'].thy % 360 == 0:
-                self.model.children['frame'].thz = self.model.children['frame'].thz + 30
-                self.model.children['handlebar'].thz = self.model.children['frame'].thz
-                self.trickPhase = 1
-                self.tricking = 0
-                self.gamestatsRef.trickMsg = "Turndown!!!"
-        
-            #self.model.children['frame'].thz = 80: self.model.children['frame'].thx = 0
-            #self.model.children['handlebar'].thy = 0: self.model.children['handlebar'].thz = self.model.children['frame'].thz: self.model.children['handlebar'].thx = 0
-        
-        elif n == 16:            #Flair
-            if self.trickPhase == 1: #or self.trickPhase == 3
-                self.model.children['frame'].thz = self.model.children['frame'].thz - (self.rider.turn * .4)
-                self.model.children['handlebar'].thz = self.model.children['handlebar'].thz - (self.rider.turn * .4)
-        
-            if self.trickPhase == 3:
-                self.model.children['frame'].thz = self.model.children['frame'].thz - (self.rider.turn * .5)
-                self.model.children['handlebar'].thz = self.model.children['handlebar'].thz - (self.rider.turn * .5)
-        
-            if self.trickPhase == 1 and self.model.children['frame'].thz <= MemAngle - 135:
-                self.trickPhase = 2
-        
-            if self.trickPhase == 2:
-                self.model.children['frame'].thz = self.model.children['frame'].thz - (self.rider.turn * .25)
-                self.model.children['handlebar'].thz = self.model.children['handlebar'].thz - (self.rider.turn * .25)
-        
-                self.model.children['frame'].thy = self.model.children['frame'].thy + (self.rider.turn * .5)
-                self.model.children['handlebar'].thy = self.model.children['handlebar'].thy + (self.rider.turn * .5)
-        
-            if self.trickPhase == 2 and self.model.children['frame'].thy % 360 == 0:
-                self.trickPhase = 3
-        
-            if self.trickPhase == 3 and self.model.children['frame'].thz <= MemAngle - 330:
-                self.tricking = 0
-                self.trickPhase = 1
-                MemAngle = 0
-                self.gamestatsRef.trickMsg = "Flair!!!"
-        
+            elif n == 7:           #Corkscrew (don't try this at home)
+                rot_vel_x = self.rider.turn * dt_s
+                self.model.thx += rot_vel_x
 
-        if self.tricking == 0 :
+                rot_vel_z = self.rider.turn * dt_s
+                self.model.thz + rot_vel_z
+            
+                if self.model.thx <= 360.0 and self.model.thx + rot_vel_x > 360.0:
+                    self.tricking = 0
+                    self.model.thx = 0.0
+                    self.gamestatsRef.trickMsg = "Corkscrew!!!"
+            
+            elif n == 8:           #Double Barspin Tailwhip
+                rot_vel = self.rider.turn * dt_s
+                self.model.children['frame'].thy += rot_vel
+                self.model.children['handlebar'].thy -= rot_vel * 2
+                #self.model.children['frame'].thz = self.model.children['frame'].thz + 1
+                #self.model.children['handlebar'].thz = self.model.children['handlebar'].thz + 1
+            
+                if self.model.children['frame'].thy <= 360.0 and self.model.children['frame'].thy + rot_vel > 360.0:
+                    self.tricking = 0
+                    self.model.children['frame'].thy = 0.0
+                    self.model.children['handlebar'].thy = 0.0
+                    self.gamestatsRef.trickMsg = "Double Barspin/Tailwhip!!!"
+            
+            elif n == 9:           #Wicked Tabletop
+                #rot_vel_z = self.rider.turn * dt_s 
+                #self.model.thz += rot_vel_z
+             
+                if self.trickPhase == 1:
+                    rot_vel_x = self.rider.turn * dt_s * 0.5
+                    self.model.thx += rot_vel_x
+
+                if self.trickPhase > 1 and self.trickPhase < 5:
+                    rot_vel_x = self.rider.turn * dt_s * 0.5    # Terrible design here... This assignment is necessary to implement the "delay" while holding the tabletop trick in theh air
+
+                if self.trickPhase == 5:
+                    rot_vel_x = -self.rider.turn * dt_s * 0.5
+                    self.model.thx += rot_vel_x
+             
+                #if self.model.children['frame'].thx % 90 == 0:
+
+                if self.model.thx <= 90.0 and self.model.thx + rot_vel_x > 90.0:
+                    self.model.thx = 90.0
+                    self.trickPhase += 1
+                    # TODO make a way to hold a trick for a certain amount of time
+
+                #if self.model.children['frame'].thx % 360 == 0:
+                if self.model.thx >= 0.0 and self.model.thx + rot_vel_x < 0.0:
+                    self.tricking = 0
+                    self.trickPhase = 1
+                    self.model.thx = 0.0
+                    self.gamestatsRef.trickMsg = "Tabletop!!!"
+            
+            elif n == 10:        #Twisting Corkscrew
+                rot_vel = self.rider.turn * dt_s * .6
+
+                self.model.thz += rot_vel
+                self.model.thx += rot_vel
+
+                if self.model.thz >= self.memAngle + 330 :
+                    self.model.thx = 0.0
+                    self.tricking = 0
+                    self.memAngle = 0
+                    self.trickPhase = 1
+                    self.gamestatsRef.trickMsg = "Twisting Corkscrew!!!"
+            
+            elif n == 11:            #Backflip Tailwhip
+                rot_vel_backflip = self.rider.turn * dt_s * .6
+                self.model.thz += rot_vel_backflip
+
+                if self.trickPhase == 1 and self.model.thz >= self.memAngle + 90:
+                    self.trickPhase = 2
+            
+                if self.trickPhase == 2:
+                    rot_vel_tailwhip = self.rider.turn * dt_s * .8
+
+                    if self.model.children['frame'].thy <= 360.0 and self.model.children['frame'].thy + rot_vel_tailwhip > 360.0:
+                        self.trickPhase = 3
+                        self.model.children['frame'].thy = 0.0
+                    else:
+                        self.model.children['frame'].thy += rot_vel_tailwhip
+            
+                if self.model.thz >= self.memAngle + 330:
+                    self.tricking = 0
+                    self.memAngle = 0
+                    self.trickPhase = 1
+                    self.gamestatsRef.trickMsg = "Backflip Tailwhip!!!"
+                 
+            elif n == 12:                    #360 turn + 360 barspin
+                #self.model.children['frame'].thz = self.model.children['frame'].thz + 1
+                #self.model.children['handlebar'].thz = self.model.children['handlebar'].thz + 1
+                
+                if self.trickPhase == 1:
+                    rot_vel_360 = self.rider.turn * dt_s
+                    self.model.thy += rot_vel_360
+
+                    if self.model.thy <= 180 and self.model.thy + rot_vel_360 > 180:
+                        self.trickPhase = 2
+
+                if self.trickPhase == 2:
+                    rot_vel_barspin = -self.rider.turn * dt_s * 2.0
+                    self.model.children['handlebar'].thy += rot_vel_barspin
+
+                    if self.model.children['handlebar'].thy >= -360.0 and self.model.children['handlebar'].thy + rot_vel_barspin < -360.0:
+                        self.model.children['handlebar'].thy = 0.0
+                        self.trickPhase = 3
+
+                if self.trickPhase == 3: 
+                    rot_vel_360 = self.rider.turn * dt_s
+                    self.model.thy += rot_vel_360
+
+                    #rot_vel_barspin = -self.rider.turn * dt_s
+                    #self.model.children['handlebar'].thy += rot_vel_barspin
+            
+                    if self.model.thy <= 360.0 and self.model.thy + rot_vel_360 > 360.0:
+                        self.tricking = 0
+                        self.trickPhase = 1
+                        self.model.thy = 0.0
+                        self.model.children['handlebar'].thy = 0.0
+                        self.gamestatsRef.trickMsg = "360 Turn + Barspin!!!"
+            
+            elif n == 13:                        #Air Endo
+                if self.trickPhase == 1:
+                    rot_vel = -self.rider.turn * dt_s * 0.6
+                    self.model.thz += rot_vel
+
+                if self.model.thz <= self.memAngle - 60:
+                    self.trickPhase = self.trickPhase + 1
+
+                if self.trickPhase > 4:
+                    rot_vel = self.rider.turn * dt_s * 0.6
+                    self.model.thz += rot_vel
+
+                    if self.model.thz >= self.memAngle - 10:
+                        self.tricking = 0
+                        self.trickPhase = 1
+                        self.memAngle = 0
+                        self.gamestatsRef.trickMsg = "Air Endo!!!"
+
+            elif n == 14:                        #Air Endo plus bar twist
+                if self.trickPhase == 1:
+                    rot_vel = -self.rider.turn * dt_s * 0.6
+                    self.model.thz += rot_vel
+                
+                    if self.model.thz <= self.memAngle - 60:
+                        self.trickPhase = 2
+                        print "to trickphase 2"
+
+                elif self.trickPhase == 2:
+                    rot_vel = -self.rider.turn * dt_s
+                    self.model.children['handlebar'].thy += rot_vel
+                    #print self.model.children['handlebar'].thy
+                    if self.model.children['handlebar'].thy >= -180.0 and self.model.children['handlebar'].thy + rot_vel < -180.0:
+                        self.model.children['handlebar'].thy = -180.0
+                        self.trickPhase = 3
+                        print "to trickphase 3"
+
+                elif self.trickPhase == 3:
+                    rot_vel = self.rider.turn * dt_s
+                    self.model.children['handlebar'].thy += rot_vel
+                    if self.model.children['handlebar'].thy <= 0.0 and self.model.children['handlebar'].thy + rot_vel > 0.0:
+                        self.model.children['handlebar'].thy = 0.0
+                        self.trickPhase = 4
+                        print "to trickphase 4"
+            
+                elif self.trickPhase == 4:
+                    rot_vel = self.rider.turn * dt_s * 0.6
+                    self.model.thz += rot_vel
+                
+                    if self.model.thz >= self.memAngle - 10:
+                        self.tricking = 0
+                        self.trickPhase = 1
+                        self.memAngle = 0
+                        self.gamestatsRef.trickMsg = "Air Endo + Bar Twist!!!"
+                        print "Sweet!"
+            
+            elif n == 15:                #Turndown  # TODO make a correct turndown.. This isn't a turndown
+
+                if self.trickPhase < 6:
+                    rot_vel_z = self.rider.turn * dt_s
+                    rot_vel_y = self.rider.turn * dt_s # TODO make a better way to track what the rotational velocities should be
+
+                    if self.model.children['frame'].thy <= 90.0 and self.model.children['frame'].thy + rot_vel_y > 90.0:  # TODO come up with a better way to hold a pose
+                        self.model.children['frame'].thy = 90.0
+                        self.trickPhase = self.trickPhase + 1
+                        print self.trickPhase
+                    else:
+                        self.model.children['frame'].thy += rot_vel_y
+                        self.model.thz += rot_vel_z
+                
+                elif self.trickPhase == 6:
+                    rot_vel_y = -self.rider.turn * dt_s
+                    self.model.children['frame'].thy += rot_vel_y
+
+                    rot_vel_z = -self.rider.turn * dt_s
+                    self.model.thz += rot_vel_z
+
+                    if self.model.children['frame'].thy >= 0.0 and self.model.children['frame'].thy + rot_vel_y < 0.0:
+                        #self.model.children['frame'].thz = self.model.children['frame'].thz + 30
+                        #self.model.children['handlebar'].thz = self.model.children['frame'].thz
+                        self.model.children['frame'].thy = 0.0
+                        self.trickPhase = 1
+                        self.tricking = 0
+                        self.gamestatsRef.trickMsg = "Turndown!!!"
+            
+                #self.model.children['frame'].thz = 80: self.model.children['frame'].thx = 0
+                #self.model.children['handlebar'].thy = 0: self.model.children['handlebar'].thz = self.model.children['frame'].thz: self.model.children['handlebar'].thx = 0
+            
+            elif n == 16:            #Flair
+                if self.trickPhase == 1: #or self.trickPhase == 3
+                    rot_vel = self.rider.turn * dt_s    # multiply the rotational velocity by some factor to maek the action look good
+                    self.model.thz += rot_vel
+            
+                if self.trickPhase == 1 and self.model.thz >= self.memAngle + 135:
+                    self.trickPhase = 2
+            
+                if self.trickPhase == 2:
+                    rot_vel_z = self.rider.turn * dt_s * .5
+                    self.model.thz += rot_vel_z
+            
+                    rot_vel_y = self.rider.turn * dt_s
+                    self.model.thy += rot_vel_y
+            
+                if self.trickPhase == 2 and self.model.thy < 360.0 and self.model.thy + rot_vel_y >= 360.0:
+                    self.model.thy = 0.0
+                    self.trickPhase = 3
+            
+                if self.trickPhase == 3:
+                    rot_vel = self.rider.turn * dt_s
+                    self.model.thz += rot_vel
+            
+                if self.trickPhase == 3 and self.model.thz >= self.memAngle + 330:
+                    self.tricking = 0
+                    self.trickPhase = 1
+                    self.model.thz = self.memAngle
+                    self.memAngle = 0
+                    self.gamestatsRef.trickMsg = "Flair!!!"
+
+        else:   # not tricking:
             # TODO QBASIC was 1-based; Make sure all your list indices and what not have the correct number base (case in point: self.gamestatsRef.addscore
-            self.gamestatsRef.addScore = int(self.gamestatsRef.addScore + self.gamestatsRef.trickPointValue[self.gamestatsRef.activeTrick] - ((self.gamestatsRef.factor * self.gamestatsRef.timesUsed[self.gamestatsRef.activeTrick]) * self.gamestatsRef.trickPointValue[self.gamestatsRef.activeTrick]))    # TODO fix. All of this stuff is going to fail (these are QBASIC arrays; you need Python)
+            self.gamestatsRef.addScore = int(self.gamestatsRef.addScore + self.gamestatsRef.trickPointValue[self.gamestatsRef.activeTrick - 1] - ((self.gamestatsRef.factor * self.gamestatsRef.timesUsed[self.gamestatsRef.activeTrick - 1]) * self.gamestatsRef.trickPointValue[self.gamestatsRef.activeTrick - 1]))  # in QBASIC, tricks were base 1, but now we're using base 0
             if self.gamestatsRef.addScore <= 0:
                 self.gamestatsRef.addScore = 1
-            self.gamestatsRef.timesUsed[self.gamestatsRef.activeTrick] += 1
+            self.gamestatsRef.timesUsed[self.gamestatsRef.activeTrick - 1] += 1 # TODO rearrange trick tracking to be a class; e.g. trick1.timesUsed, trick1.originalPointTotal, etc.
             self.gamestatsRef.trickMsg = self.gamestatsRef.trickMsg + " - " + str(self.gamestatsRef.addScore) + " pts. "   # Note: we could use better Python string processing here.. we're just duplicating the QBASIC way
             if self.gamestatsRef.numTricks > 1:
                 self.gamestatsRef.trickMsg = self.gamestatsRef.trickMsg + " " + str(self.gamestatsRef.numTricks) + " TRICK COMBO!!!"
             self.gamestatsRef.runReport.append(self.gamestatsRef.trickMsg)
+            self.gamestatsRef.activeTrick = 0   # NOTE: it's necessary to set activeTrick to 0 here... but why?
 
             #self.mmRef.setMessage(self.gamestatsRef.trickMsg, [ 400, 300 ], (192, 64, 64), 5 )  # TODO reinstate this message. It should be triggered when you land a trick, then expire after a few seconds
         

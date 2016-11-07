@@ -25,7 +25,7 @@ class PlayingSubstate(object):
     startlevel = 0
     playing = 1
     crashed = 2
-    resetlevel = 3
+    resetlevel = 3      # TODO: remove? may not be necessary
     finishlevel = 4
     gameover = 5
 
@@ -382,14 +382,14 @@ class GameStateImpl(GameStateBase):
         if self.substate == PlayingSubstate.startlevel:
             # TODO break playingsubstates into their own functions, maybe
             # Initialize bike
-            self.bike.Init()    # TODO move this out of update()? I'm not sure I like having it here
+            self.bike.Init()    # TODO move this out of update()? I'm not sure I like having it here # TODO evaluate -- do we need to totally reinit here (Init() loads the model from disk.. Might be overkill)
             self.bike._position = vector.Vector(320, self.levelMgr.y_ground, 0, 1)        # TODO make a function that synchronizes bike _position with bike model position
             self.bike.model.position = Point3D(320, self.levelMgr.y_ground, 0)  # Also TODO: do camera/projection model view
 
-            self.bike.rider.maxspd = 130.0 # TODO don't hardcode biker abilities
-            self.bike.rider.pump = 12.0 # TODO don't hardcode biker abilities
-            self.bike.rider.jump = 3.0 # TODO don't hardcode biker abilities
-            self.bike.rider.turn = 45.0 # TODO don't hardcode biker abilities
+            self.bike.rider.maxspd = 130.0  # TODO don't hardcode biker abilities
+            self.bike.rider.pump = 12.0     # TODO don't hardcode biker abilities
+            self.bike.rider.jump = 3.0      # TODO don't hardcode biker abilities
+            self.bike.rider.turn = 180.0    # degrees per second # TODO don't hardcode biker abilities
 
             ## TODO Do something useful with frames of reference. The stuff you're doing with it right now is for testing purposes and will probably be replaced. Also, refFrame isn't defined in state.Init(). It's defined here
             self.refFrame.setUpVector(0,-1,0)
@@ -533,15 +533,18 @@ class GameStateImpl(GameStateBase):
                             self.gamestats.runSummary()
 
         elif self.substate == PlayingSubstate.crashed:
-            self.bike.Init()    # TODO evaluate -- do we need to totally reinit here (Init() loads the model from disk.. Might be overkill)
-            self.levelMgr.InitLevel(self.levelMgr.currentLevel)    # TODO replace with level manager
+            # If we crashed, then wait here for user input, then go back to startLevel
+
+            #self.bike.Init()    # TODO evaluate -- do we need to totally reinit here (Init() loads the model from disk.. Might be overkill)
+            #self.levelMgr.InitLevel(self.levelMgr.currentLevel)    # TODO replace with level manager
 
             # TODO make sure this clearing stuff is at the end of the substate? After user has presed any key to continue or whatever?
             self.mm.clear()
             self._eventQueue.Clear()
             self._eventQueue.Initialize(64) # TOOD perhaps don't hardcode the # of events that can be handled by this queue
     
-            self.substate = PlayingSubstate.resetlevel
+            #self.substate = PlayingSubstate.resetlevel     # TODO remove? Probably don't need PlayingSubstate.resetlevel
+            self.substate = PlayingSubstate.startlevel
             # TODO perhaps wait for user input? (put that logic into ProcessEvents)
 
         elif self.substate == PlayingSubstate.finishlevel:
@@ -713,116 +716,115 @@ class GameStateImpl(GameStateBase):
                 if event.key == pygame.K_j:
                     if self.kbStateMgr.trickModifier:
                         self.gamestats.activeTrick = 2   # Note: self.gamestats.activeTrick is the trick identifier (selects which trick animation to play)
-                        self.bike.tricking = -1
+                        self.bike.tricking = 1
                         self.gamestats.numTricks += 1
                         self.levelMgr.trickCounter = self.levelMgr.trickCounter + 1
             
                     else:
                         self.gamestats.activeTrick = 1
-                        self.bike.tricking = -1
+                        self.bike.tricking = 1
                         self.gamestats.numTricks += 1
                         self.levelMgr.trickCounter = self.levelMgr.trickCounter + 1
             
                 elif event.key == pygame.K_k:
                     if self.kbStateMgr.trickModifier:
                         self.gamestats.activeTrick = 4
-                        self.bike.tricking = -1
+                        self.bike.tricking = 1
                         self.gamestats.numTricks += 1
                         self.levelMgr.trickCounter = self.levelMgr.trickCounter + 1
             
                     else:
                         self.gamestats.activeTrick = 3
-                        self.bike.tricking = -1
-                        MemAngle = self.bike.model.children['handlebar'].thy
+                        self.bike.tricking = 1
+                        self.bike.memAngle = self.bike.model.children['handlebar'].thy  # Use handlebar angle because this trick is a handlebar spin
                         self.gamestats.numTricks += 1
                         self.levelMgr.trickCounter = self.levelMgr.trickCounter + 1
             
                 elif event.key == pygame.K_i:
                     if self.kbStateMgr.trickModifier:
                         self.gamestats.activeTrick = 16
-                        self.bike.tricking = -1
-                        MemAngle = self.bike.model.children['frame'].thz
+                        self.bike.tricking = 1
+                        self.bike.memAngle = self.bike.model.thz
                         self.gamestats.numTricks += 1
                         self.levelMgr.trickCounter = self.levelMgr.trickCounter + 1
 
                     else:
                         self.gamestats.activeTrick = 5
-                        self.bike.tricking = -1
-                        MemAngle = self.bike.model.children['frame'].thz
+                        self.bike.tricking = 1
+                        self.bike.memAngle = self.bike.model.thz
                         self.gamestats.numTricks += 1
                         self.levelMgr.trickCounter = self.levelMgr.trickCounter + 1
             
                 elif event.key == pygame.K_u:
                     if self.kbStateMgr.trickModifier:
                         self.gamestats.activeTrick = 9
-                        self.bike.tricking = -1
+                        self.bike.tricking = 1
                         self.gamestats.numTricks += 1
                         self.levelMgr.trickCounter = self.levelMgr.trickCounter + 1
             
                     else:
                         self.gamestats.activeTrick = 7
-                        self.bike.tricking = -1
+                        self.bike.tricking = 1
                         self.gamestats.numTricks += 1
                         self.levelMgr.trickCounter = self.levelMgr.trickCounter + 1
                 
                 elif event.key == pygame.K_o:
                     if self.kbStateMgr.trickModifier:
                         self.gamestats.activeTrick = 10
-                        self.bike.tricking = -1
-                        MemAngle = self.bike.model.children['frame'].thz
+                        self.bike.tricking = 1
+                        self.bike.memAngle = self.bike.model.thz
                         self.gamestats.numTricks += 1
                         self.levelMgr.trickCounter = self.levelMgr.trickCounter + 1
             
                     else: 
                         self.gamestats.activeTrick = 8
-                        self.bike.tricking = -1
+                        self.bike.tricking = 1
                         self.gamestats.numTricks += 1
                         self.levelMgr.trickCounter = self.levelMgr.trickCounter + 1
              
                 elif event.key == pygame.K_h:
                     if self.kbStateMgr.trickModifier:
                         self.gamestats.activeTrick = 12
-                        self.bike.tricking = -1
+                        self.bike.tricking = 1
                         self.gamestats.numTricks += 1
                         self.levelMgr.trickCounter = self.levelMgr.trickCounter + 1
             
                     else:
                         self.gamestats.activeTrick = 11
-                        self.bike.tricking = -1
+                        self.bike.tricking = 1
                         self.gamestats.numTricks += 1
-                        MemAngle = self.bike.model.children['frame'].thz
+                        self.bike.memAngle = self.bike.model.thz
                         self.levelMgr.trickCounter = self.levelMgr.trickCounter + 1
             
                 elif event.key == pygame.K_y:
                     if self.kbStateMgr.trickModifier:
                         self.gamestats.activeTrick = 14
-                        self.bike.tricking = -1
+                        self.bike.tricking = 1
                         self.gamestats.numTricks += 1
                         self.levelMgr.trickCounter = self.levelMgr.trickCounter + 1
-                        MemAngle = self.bike.model.children['frame'].thz
+                        self.bike.memAngle = self.bike.model.thz
             
                     else: 
                         self.gamestats.activeTrick = 13
-                        self.bike.tricking = -1
+                        self.bike.tricking = 1
                         self.gamestats.numTricks += 1
                         self.levelMgr.trickCounter = self.levelMgr.trickCounter + 1
-                        MemAngle = self.bike.model.children['frame'].thz
+                        self.bike.memAngle = self.bike.model.thz
             
                 elif event.key == pygame.K_n:
                     if self.kbStateMgr.trickModifier:
-                        MemAngle = self.bike.model.children['frame'].thz
-                        self.gamestats.activeTrick = 15
-                        self.bike.tricking = -1
-                        self.gamestats.numTricks += 1
-                        self.levelMgr.trickCounter = self.levelMgr.trickCounter + 1
-            
-                    else:
                         self.gamestats.activeTrick = 6
-                        self.bike.tricking = -1
-                        MemAngle = self.bike.model.children['frame'].thz
+                        self.bike.tricking = 1
+                        self.bike.memAngle = self.bike.model.thz
                         self.gamestats.numTricks += 1
                         self.levelMgr.trickCounter = self.levelMgr.trickCounter + 1
-            
+
+                    else:
+                        self.bike.memAngle = self.bike.model.thz
+                        self.gamestats.activeTrick = 15
+                        self.bike.tricking = 1
+                        self.gamestats.numTricks += 1
+                        self.levelMgr.trickCounter = self.levelMgr.trickCounter + 1
             
                 #Lean back
                 elif event.key == pygame.K_q:
