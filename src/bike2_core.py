@@ -320,11 +320,10 @@ class Bike(GameObj):
         # TODO holy crap, seriously. Fix the weirdness.. gameobj's have _position; Wireframes have position..
         self._position[0] += self._velocity[0] * dt_s
         self._position[1] += self._velocity[1] * dt_s
+        self.model.position = Point3D(self._position[0], self._position[1], self._position[2])
 
         self._velocity[0] += self._acceleration[0] * dt_s
         self._velocity[1] += self._acceleration[1] * dt_s
-
-        self.model.position = Point3D(self._position[0], self._position[1], self._position[2])
 
         self.model.updateModelTransform()  # Translate/rotate the bike (NOTE: this is regular ol' motion; for tricking, see updateTrick)
         self.aabb.computeBounds(self.model) # TODO see aabb module for thoughts on computeBounds() vs update()  # TODO - once we've updated transforms, AABB can simply use _xpoints; remove the _xpoints computation from AABB

@@ -395,6 +395,7 @@ class GameStateImpl(GameStateBase):
             self.refFrame.setUpVector(0,-1,0)
             self.refFrame.setLookVector(0,0,-1)
             self.refFrame.setPosition(-320, 0, 0)
+
             ##self.refFrame.setPosition(350, self.levelMgr.y_ground + 30, -50)
             ##look = Vector(self.bike._position[0] - self.refFrame.position[0], self.bike._position[1] - self.refFrame.position[1], self.bike._position[2] - self.refFrame.position[2])
             ##self.refFrame.setLookVector(look[0], look[1], look[2])
@@ -612,9 +613,12 @@ class GameStateImpl(GameStateBase):
                                        b_x, b_y, 0, 1)
 
         # Get the view matrix (i.e. camera view)
-        viewMatrix = self.refFrame.getMatrix()
+        #viewMatrix = self.refFrame.getMatrix()     # This matrix works.
+        viewMatrix = self.refFrame.getLookAtMatrix(self.bike._position[0], -self.bike._position[1], 250, self.bike._position[0], self.bike._position[1], 0, 0, -1, 0)  # experimental
+
 
         #import pdb; pdb.set_trace()
+        # TODO View first, then projection, then viewport
         composedViewportAndView = matrix.mMultmat(viewportMatrix, viewMatrix)
         self.levelMgr.drawLevel(self.appRef.surface_bg, self.gamestats, matView=composedViewportAndView)
         self.bike.draw(self.appRef.surface_bg, matView=composedViewportAndView)
