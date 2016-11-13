@@ -593,11 +593,11 @@ class GameStateImpl(GameStateBase):
         ymin_vp = 0
         ymax_vp = screensize[1]
 
-        xmin_world = -600   # world coords will be mapped into the viewport space
-        xmax_world = 600
+        xmin_world = -300   # world coords will be mapped into the viewport space
+        xmax_world = 300
 
-        ymin_world = -400
-        ymax_world = 400
+        ymin_world = -200
+        ymax_world = 200
 
         m_x = float(xmax_vp - xmin_vp) / float(xmax_world - xmin_world)     # m for linear equation form y = mx + b
         b_x = float(xmin_vp + xmax_vp) / float(2)                           # b for linear equation form y = mx + b
@@ -616,10 +616,16 @@ class GameStateImpl(GameStateBase):
         #viewMatrix = self.refFrame.getMatrix()     # This matrix works.
         viewMatrix = self.refFrame.getLookAtMatrix(self.bike._position[0], -self.bike._position[1], 250, self.bike._position[0], self.bike._position[1], 0, 0, -1, 0)  # experimental
 
+        projectionMatrix = self.refFrame.getPerspectiveProjectionMatrix(30.0, screensize[0] / screensize[1], 0.5, 5.0)
+
 
         #import pdb; pdb.set_trace()
         # TODO View first, then projection, then viewport
-        composedViewportAndView = matrix.mMultmat(viewportMatrix, viewMatrix)
+        #composedViewportAndView = matrix.mMultmat(viewportMatrix, viewMatrix)
+
+        composedProjAndView = matrix.mMultmat(projectionMatrix, viewMatrix)
+        composedViewportAndView = matrix.mMultmat(viewportMatrix, composedProjAndView)
+
         self.levelMgr.drawLevel(self.appRef.surface_bg, self.gamestats, matView=composedViewportAndView)
         self.bike.draw(self.appRef.surface_bg, matView=composedViewportAndView)
 

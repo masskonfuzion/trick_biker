@@ -140,6 +140,8 @@ class Wireframe(object):
         for xpoint_model in obj_ref._xpoints:
             #import pdb; pdb.set_trace()
             p = matrix.mMultvec(matView, vector.Vector(xpoint_model[0], xpoint_model[1], xpoint_model[2], 1.0))
+            vector.vScale(p, 1/p[3], True)  # Divide by w, in case our view matrix has a perspective component in it (which it might, depending on how the view matrix was setup before drawing)
+
             xpoints_view.append( Point3D(p.x, p.y, p.z)  )  # Not sure if it matters that we force xpoints_view to be a Point3D, but we do it because we made model._xpoints a Point3D
             
         for lineData in obj_ref.lines:
@@ -846,10 +848,16 @@ class LevelManager(object):
 
             # Apply view transformation
             launch_start = matrix.mMultvec(matView, vector.Vector(launch_sx, launch_sy, launch_sz, 1.0))
+            vector.vScale(launch_start, 1 / launch_start[3], True)  # Divide out w's (necessary only for perspective projection, where w has a value; will have no effect with other projections, because w will be 1)
+            
             launch_end = matrix.mMultvec(matView, vector.Vector(launch_ex, launch_ey, launch_ez, 1.0))
+            vector.vScale(launch_end, 1 / launch_end[3], True)
 
             land_start = matrix.mMultvec(matView, vector.Vector(land_sx, land_sy, land_sz, 1.0))
+            vector.vScale(land_start, 1 / land_start[3], True)
+
             land_end = matrix.mMultvec(matView, vector.Vector(land_ex, land_ey, land_ez, 1.0))
+            vector.vScale(land_end, 1 / land_end[3], True)
 
             pygame.draw.line(screen, (192, 192, 192), (launch_start[0], launch_start[1]), (launch_end[0], launch_end[1]))
             pygame.draw.line(screen, (192, 192, 192), (land_start[0], land_start[1]), (land_end[0], land_end[1]))
