@@ -614,9 +614,10 @@ class GameStateImpl(GameStateBase):
 
         # Get the view matrix (i.e. camera view)
         #viewMatrix = self.refFrame.getMatrix()     # This matrix works.
-        viewMatrix = self.refFrame.getLookAtMatrix(self.bike._position[0], -self.bike._position[1], 250, self.bike._position[0], self.bike._position[1], 0, 0, -1, 0)  # experimental
+        #viewMatrix = self.refFrame.getLookAtMatrix(self.bike._position[0], -self.bike._position[1], 250, self.bike._position[0], self.bike._position[1], 0, 0, -1, 0)  # experimental
+        viewMatrix = self.refFrame.getLookAtMatrix(self.bike._position[0], 0.0, 250, self.bike._position[0], 0.0, 0, 0, -1, 0)  # experimental
 
-        projectionMatrix = self.refFrame.getPerspectiveProjectionMatrix(30.0, screensize[0] / screensize[1], 0.5, 5.0)
+        projectionMatrix = self.refFrame.getPerspectiveProjectionMatrix(30.0, screensize[0] / screensize[1], 0.5, 2.0)
 
 
         #import pdb; pdb.set_trace()
