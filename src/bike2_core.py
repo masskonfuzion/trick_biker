@@ -724,6 +724,7 @@ class LevelManager(object):
         self.levelFinished = False
         self.finalLevel = 0     # Initialize final level when loading level data or something
         self.curRamp = 0
+        self.trackHalfWidth = 25.0   # Track width is 2 * this number
 
         self.y_ground = 0
 
@@ -847,18 +848,31 @@ class LevelManager(object):
             land_sz = 0.0
 
             # Apply view transformation
-            launch_start = matrix.mMultvec(matView, vector.Vector(launch_sx, launch_sy, launch_sz, 1.0))
-            vector.vScale(launch_start, 1 / launch_start[3], True)  # Divide out w's (necessary only for perspective projection, where w has a value; will have no effect with other projections, because w will be 1)
+            launch_start_near = matrix.mMultvec(matView, vector.Vector(launch_sx, launch_sy, self.trackHalfWidth, 1.0))
+            launch_start_far = matrix.mMultvec(matView, vector.Vector(launch_sx, launch_sy, -self.trackHalfWidth, 1.0))
+            vector.vScale(launch_start_near, 1 / launch_start_near[3], True)  # Divide out w's (necessary only for perspective projection, where w has a value; will have no effect with other projections, because w will be 1)
+            vector.vScale(launch_start_far, 1 / launch_start_far[3], True)  # Divide out w's (necessary only for perspective projection, where w has a value; will have no effect with other projections, because w will be 1)
             
-            launch_end = matrix.mMultvec(matView, vector.Vector(launch_ex, launch_ey, launch_ez, 1.0))
-            vector.vScale(launch_end, 1 / launch_end[3], True)
+            launch_end_near = matrix.mMultvec(matView, vector.Vector(launch_ex, launch_ey, self.trackHalfWidth, 1.0))
+            launch_end_far = matrix.mMultvec(matView, vector.Vector(launch_ex, launch_ey, -self.trackHalfWidth, 1.0))
+            vector.vScale(launch_end_near, 1 / launch_end_near[3], True)
+            vector.vScale(launch_end_far, 1 / launch_end_far[3], True)
 
-            land_start = matrix.mMultvec(matView, vector.Vector(land_sx, land_sy, land_sz, 1.0))
-            vector.vScale(land_start, 1 / land_start[3], True)
+            land_start_near = matrix.mMultvec(matView, vector.Vector(land_sx, land_sy, self.trackHalfWidth, 1.0))
+            land_start_far = matrix.mMultvec(matView, vector.Vector(land_sx, land_sy, -self.trackHalfWidth, 1.0))
+            vector.vScale(land_start_near, 1 / land_start_near[3], True)
+            vector.vScale(land_start_far, 1 / land_start_far[3], True)
 
-            land_end = matrix.mMultvec(matView, vector.Vector(land_ex, land_ey, land_ez, 1.0))
-            vector.vScale(land_end, 1 / land_end[3], True)
+            land_end_near = matrix.mMultvec(matView, vector.Vector(land_ex, land_ey, self.trackHalfWidth, 1.0))
+            land_end_far = matrix.mMultvec(matView, vector.Vector(land_ex, land_ey, -self.trackHalfWidth, 1.0))
+            vector.vScale(land_end_near, 1 / land_end_near[3], True)
+            vector.vScale(land_end_far, 1 / land_end_far[3], True)
 
-            pygame.draw.line(screen, (192, 192, 192), (launch_start[0], launch_start[1]), (launch_end[0], launch_end[1]))
-            pygame.draw.line(screen, (192, 192, 192), (land_start[0], land_start[1]), (land_end[0], land_end[1]))
+            pygame.draw.line(screen, (192, 192, 192), (launch_start_near[0], launch_start_near[1]), (launch_end_near[0], launch_end_near[1]))
+            pygame.draw.line(screen, (192, 192, 192), (launch_start_far[0], launch_start_far[1]), (launch_end_far[0], launch_end_far[1]))
 
+            pygame.draw.line(screen, (192, 192, 192), (land_start_near[0], land_start_near[1]), (land_end_near[0], land_end_near[1]))
+            pygame.draw.line(screen, (192, 192, 192), (land_start_far[0], land_start_far[1]), (land_end_far[0], land_end_far[1]))
+
+            pygame.draw.line(screen, (192, 192, 192), (launch_end_near[0], launch_end_near[1]), (launch_end_far[0], launch_end_far[1]))
+            pygame.draw.line(screen, (192, 192, 192), (land_end_near[0], land_end_near[1]), (land_end_far[0], land_end_far[1]))
