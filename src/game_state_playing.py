@@ -65,22 +65,28 @@ class GameplayStats(object):
         self.trickPointValue = [ 100, 150, 125, 150, 250, 350, 200, 175, 200, 300, 330, 375, 75, 200, 100, 275 ]   # Point values of tricks (e.g. 0th item in array is the point value for Trick #1)
         self.timesUsed = []
         self.trickCounter = 0       # This appears to be an index for the # of tricks performed in a level, for run-report purposes (e.g. a 5-trick combo counts as 1 trickCounter, for the run report.. if that makes sense)
-        self.resetTrickCounters()
         self.activeTrick = 0        # Note: to be consistent the QBASIC version, we'll make activeTrick go from 1 - whatever # of tricks we want. 0 means no active trick
         self.trickMsg = ""          # Message to display while tricking (e.g. prints out the trick combo as you're performing it)
 
         # End-of-level summary
         self.runReport = []
-        self.resetRunReport()
+        self.reset()
         # TODO make sure to use your resetXYZ helper functions when starting/restarting levels
 
         # Possibly used for debugging
         self.drawPoints = False
 
         # Misc
-        self.factor = .25   # TODO figure out the purpose of this var.. it's in the original QBASIC code as a hard-coded const
+        self.factor = .25   # some factor used for calculating trick/scombo scores. It's pretty arbitrary
 
-    def resetTrickCounters(self):
+    def reset(self):
+        self.score = 0
+        self.paused = 0
+        self.numTricks = 0          # Num of tricks in a trick combo (resets to 0 upon landing; perhaps name this better?)
+        self.addScore = 0           # Used to keep track of the added-up score of tricks in a combo (resets once the trick is landed.. or crashed...)
+        self.activeTrick = 0        # Note: to be consistent the QBASIC version, we'll make activeTrick go from 1 - whatever # of tricks we want. 0 means no active trick
+        self.trickMsg = ""          # Message to display while tricking (e.g. prints out the trick combo as you're performing it)
+
         # TODO perhaps also add other stuff into this function, e.g. addScore, numTricks, trickCounter, etc
         if self.timesUsed:  # if list exists already, zero it out
             for i in range(0, self.trickArraySize):
@@ -89,7 +95,6 @@ class GameplayStats(object):
             for i in range(0, self.trickArraySize):
                 self.timesUsed.append(0)
 
-    def resetRunReport(self):
         del self.runReport[:]   # Clear out the run report for a new level
 
     def loadTrophies(self):
@@ -410,6 +415,7 @@ class GameStateImpl(GameStateBase):
             self.levelMgr.currentLevel = 1   # TODO don't hardcode the level here. Set self.levelMgr.currentLevel = 1 at game init, then increment
             self.levelMgr.InitLevel()
             self.mm.setMessage("Level {}!".format(self.levelMgr.currentLevel), [ 400, 300 ], (192, 64, 64), 5 )  # TODO un-hardcode the render position of the message. But otherwise, use this as a template to replace other message and doMessage calls
+            self.gamestats.reset()
 
             self.substate = PlayingSubstate.playing # TODO maybe put a couple of seconds' delay before substate change, or maybe require a keypress
         elif self.substate == PlayingSubstate.playing:
@@ -426,7 +432,6 @@ class GameStateImpl(GameStateBase):
                     # If you're here, you've landed
                     self.bike._position[1] = self.levelMgr.y_ground# - 30
                     self.bike._velocity[1] = 0.0
-                    self.gamestats.activeTrick = 0
 
                     # TODO after doing rough-cut aabb test, do more precise testing.. somehow. Maybe an intersection test of the wireframe with the ground?
                     # TODO Maybe store ramp geometry in the level object; you're recalculating coordinates that you calculated in order to be able to draw the level. Add collision detection
@@ -459,6 +464,7 @@ class GameStateImpl(GameStateBase):
                         # Aside: I know the code is weird in this game; I'm porting from QBASIC.. give me a break
                         self.staticMsg['presskey'].changeText("Press <Enter> to continue.")
                         self.bike.crashed = True
+                        self.substate = PlayingSubstate.crashed
                         self.bike._position[1] = self.levelMgr.y_ground - 15
             
                         if (self.bike.model.children['frame'].thy + 180) % 360 >= 270 and (self.bike.model.children['frame'].thy + 180) % 360 <= 90 :
@@ -490,19 +496,16 @@ class GameStateImpl(GameStateBase):
                     else:
                         # Note: the following stuff is what happens once a trick is landed. Perhaps put into a helper function
                         self.bike.inAir = False
-                        self.gamestats.score = self.gamestats.score + self.gamestats.addScore
-                        self.gamestats.addScore = 0
+
+                        #import pdb; pdb.set_trace()
+                        self.gamestats.score += self.gamestats.addScore
+                        self.gamestats.addScore = 0 # Reset addscore on a successful landing; it tallies the point total of all tricks performed in a combo, and resets when the trick/combo is landed
                         self.gamestats.numTricks = 0
                         self.bike.model.thz = 0                         # Set the parent transformation to 0 deg about Z
                         self.bike.model.children['frame'].thz = 0       # TODO: evaluate: is it necessary to also set child transforms after the parent transform? Probably yes
                         self.bike.model.children['handlebar'].thz = 0
                         one = 15        #Tab stops
-            
-                    if self.bike.crashed:
-                        self.substate = PlayingSubstate.crashed
-                    else:
                         self.levelMgr.curRamp += 1   # TODO manage curRamp better. Maybe take a BSP-type approach? i.e, look at all ramps, but only process a ramp is the bike's x pos < ramp's x pos
-                    # NOTE the following substate change logic could just as easily go into a function (and maybe should?)
 
                 if self.levelMgr.curRamp == len(self.levelMgr.ramps):  # You've finished the level
                     #import pdb; pdb.set_trace()

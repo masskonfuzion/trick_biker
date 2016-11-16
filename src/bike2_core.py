@@ -95,6 +95,19 @@ class ColorType(object):
         self.g = 0.0
         self.b = 0.0
         
+
+# TODO convert haphazard tricks to use Trick objects
+#==============================================================================
+class Trick(object):
+    def __init__(self):
+        self.trickPhases = []
+
+#==============================================================================
+class TrickPhase(object):
+    def __init__(self):
+        self.actions = []   # A list of SIMULTANEOUS actions (e.g. handlebar spin, frame rotate).. TODO come up with a syntax for defining trickphases
+        self.trigger = None # A trigger to tell when the current trickPhase is over
+
 #==============================================================================
 class Wireframe(object):
     """ A wireframe model
@@ -686,18 +699,34 @@ class Bike(GameObj):
                     self.gamestatsRef.trickMsg = "Flair!!!"
 
         else:   # not tricking:
+            # NOTE the following code was in this location in the QBASIC game, because all the variables were global. But in the Python version, this stuff probably belongs in the playing state code, so we copied it
+            # there. You can probably delete the commented-out code here
             # TODO QBASIC was 1-based; Make sure all your list indices and what not have the correct number base (case in point: self.gamestatsRef.addscore
-            self.gamestatsRef.addScore = int(self.gamestatsRef.addScore + self.gamestatsRef.trickPointValue[self.gamestatsRef.activeTrick - 1] - ((self.gamestatsRef.factor * self.gamestatsRef.timesUsed[self.gamestatsRef.activeTrick - 1]) * self.gamestatsRef.trickPointValue[self.gamestatsRef.activeTrick - 1]))  # in QBASIC, tricks were base 1, but now we're using base 0
-            if self.gamestatsRef.addScore <= 0:
-                self.gamestatsRef.addScore = 1
-            self.gamestatsRef.timesUsed[self.gamestatsRef.activeTrick - 1] += 1 # TODO rearrange trick tracking to be a class; e.g. trick1.timesUsed, trick1.originalPointTotal, etc.
-            self.gamestatsRef.trickMsg = self.gamestatsRef.trickMsg + " - " + str(self.gamestatsRef.addScore) + " pts. "   # Note: we could use better Python string processing here.. we're just duplicating the QBASIC way
-            if self.gamestatsRef.numTricks > 1:
-                self.gamestatsRef.trickMsg = self.gamestatsRef.trickMsg + " " + str(self.gamestatsRef.numTricks) + " TRICK COMBO!!!"
-            self.gamestatsRef.runReport.append(self.gamestatsRef.trickMsg)
-            self.gamestatsRef.activeTrick = 0   # NOTE: it's necessary to set activeTrick to 0 here... but why?
+            #self.gamestatsRef.addScore = int(self.gamestatsRef.addScore + self.gamestatsRef.trickPointValue[self.gamestatsRef.activeTrick - 1] - ((self.gamestatsRef.factor * self.gamestatsRef.timesUsed[self.gamestatsRef.activeTrick - 1]) * self.gamestatsRef.trickPointValue[self.gamestatsRef.activeTrick - 1]))  # in QBASIC, tricks were base 1, but now we're using base 0
+            #if self.gamestatsRef.addScore <= 0:
+            #    self.gamestatsRef.addScore = 1
+            #self.gamestatsRef.timesUsed[self.gamestatsRef.activeTrick - 1] += 1 # TODO rearrange trick tracking to be a class; e.g. trick1.timesUsed, trick1.originalPointTotal, etc.
+            #self.gamestatsRef.trickMsg = self.gamestatsRef.trickMsg + " - " + str(self.gamestatsRef.addScore) + " pts. "   # Note: we could use better Python string processing here.. we're just duplicating the QBASIC way
+            #if self.gamestatsRef.numTricks > 1:
+            #    self.gamestatsRef.trickMsg = self.gamestatsRef.trickMsg + " " + str(self.gamestatsRef.numTricks) + " TRICK COMBO!!!"
+            #self.gamestatsRef.runReport.append(self.gamestatsRef.trickMsg)
+            #self.gamestatsRef.activeTrick = 0   # NOTE: it's necessary to set activeTrick to 0 here... but why?
 
-            #self.mmRef.setMessage(self.gamestatsRef.trickMsg, [ 400, 300 ], (192, 64, 64), 5 )  # TODO reinstate this message. It should be triggered when you land a trick, then expire after a few seconds
+            if self.gamestatsRef.activeTrick > 0:
+                #import pdb; pdb.set_trace()
+                # NOTE: Addscore is used to add up all the scores of all tricks being performed as part of a combo
+                addScoreIncrement = int(self.gamestatsRef.trickPointValue[self.gamestatsRef.activeTrick - 1] - (self.gamestatsRef.factor * self.gamestatsRef.timesUsed[self.gamestatsRef.activeTrick - 1] * self.gamestatsRef.trickPointValue[self.gamestatsRef.activeTrick - 1]))     # in QBASIC, tricks were base 1, but now we're using base 0
+                addScoreIncrement = max(addScoreIncrement, 1)
+                self.gamestatsRef.addScore +=  addScoreIncrement
+
+                self.gamestatsRef.timesUsed[self.gamestatsRef.activeTrick - 1] += 1 # TODO rearrange trick tracking to be a class; e.g. trick1.timesUsed, trick1.originalPointTotal, etc.
+                self.gamestatsRef.trickMsg = self.gamestatsRef.trickMsg + " - " + str(self.gamestatsRef.addScore) + " pts. "   # Note: we could use better Python string processing here.. we're just duplicating the QBASIC way
+                if self.gamestatsRef.numTricks > 1:
+                    self.gamestatsRef.trickMsg = self.gamestatsRef.trickMsg + " " + str(self.gamestatsRef.numTricks) + " TRICK COMBO!!!"
+                self.gamestatsRef.runReport.append(self.gamestatsRef.trickMsg)
+                self.gamestatsRef.activeTrick = 0
+
+                #self.mmRef.setMessage(self.gamestatsRef.trickMsg, [ 400, 300 ], (192, 64, 64), 5 )  # TODO reinstate this message. It should be triggered when you land a trick, then expire after a few seconds
         
 ##Initial trick point values. TODO put this into a class maybe?
 ##TrickPointData:
