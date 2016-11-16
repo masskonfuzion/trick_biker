@@ -385,6 +385,8 @@ class GameStateImpl(GameStateBase):
             self.bike.Init()    # TODO move this out of update()? I'm not sure I like having it here # TODO evaluate -- do we need to totally reinit here (Init() loads the model from disk.. Might be overkill)
             self.bike._position = vector.Vector(320, self.levelMgr.y_ground, 0, 1)        # TODO make a function that synchronizes bike _position with bike model position
             self.bike.model.position = Point3D(320, self.levelMgr.y_ground, 0)  # Also TODO: do camera/projection model view
+            self.bike._velocity = vector.Vector(0,0,0)
+            self.bike._acceleration = vector.Vector(0,0,0)
 
             self.bike.rider.maxspd = 130.0  # TODO don't hardcode biker abilities
             self.bike.rider.pump = 12.0     # TODO don't hardcode biker abilities
@@ -394,7 +396,7 @@ class GameStateImpl(GameStateBase):
             ## TODO Do something useful with frames of reference. The stuff you're doing with it right now is for testing purposes and will probably be replaced. Also, refFrame isn't defined in state.Init(). It's defined here
             self.refFrame.setUpVector(0,-1,0)
             self.refFrame.setLookVector(0,0,-1)
-            self.refFrame.setPosition(-320, 0, 0)
+            self.refFrame.setPosition(-320, 0, 0)   # TODO figure out positioning. I believe the reference frame should be positioned at origin (0,0,0)
 
             ##self.refFrame.setPosition(350, self.levelMgr.y_ground + 30, -50)
             ##look = Vector(self.bike._position[0] - self.refFrame.position[0], self.bike._position[1] - self.refFrame.position[1], self.bike._position[2] - self.refFrame.position[2])
@@ -413,17 +415,13 @@ class GameStateImpl(GameStateBase):
         elif self.substate == PlayingSubstate.playing:
             ## TODO note/correct - there is some redundancy between the RiderType class and the Bike class. e.g., RiderType has xvel, and Bike have velocity Vector (which has an x component)
     
-            ##xAdd1 = self.levelMgr.ramps[self.levelMgr.curRamp].x + self.levelMgr.ramps[self.levelMgr.curRamp].dist
-            ###CIRCLE (xAdd1, self.levelMgr.y_ground - 10), 3, 3
             self.bike.update(dt_s)
             self.refFrame.setPosition(-self.bike._position[0], 0, 0) # Move the camera (follow the bike) (note the negative sign..)
             self.checkRamp(self.levelMgr.curRamp)    # TODO possibly move the checkRamp call into the playing substate?
 
             if self.bike.inAir:
                 # This is rudimentary "collision detection" (more like a boundary test) for determining when the bike lands (self.levelMgr.y_ground is ground level)
-                # TODO replace the BikePts2D(21).y > self.levelMgr.y_ground with an AABB computation / boundary test
 
-                #if self.bike._velocity < 0 and self.bike.aabb._minPt[1] <= 0.0:  # TODO make sure that biker's yvel is 0 when on the ground; otherwise this test will trigger false positives
                 if self.bike._velocity[1] < 0 and self.bike.aabb._minPt[1] <= self.levelMgr.y_ground:  # TODO make sure that biker's yvel is 0 when on the ground; otherwise this test will trigger false positives
                     # If you're here, you've landed
                     self.bike._position[1] = self.levelMgr.y_ground# - 30
@@ -456,7 +454,6 @@ class GameStateImpl(GameStateBase):
                         if self.bike.tricking :
                             self.staticMsg['info'].changeText(getCrashedMsg(self.gamestats.crashPhrases))
                             # NOTE: we only set the message here. The drawStatus function will render the message.  But also NOTE: we'll need to make sure to clear out the txtStr property to clear out messages (e.g. "You crashed" messages)
-
                         else:
                             self.staticMsg['info'].changeText(getDidNotClearJumpMsg(self.gamestats.rampCrashPhrases))
                         # Aside: I know the code is weird in this game; I'm porting from QBASIC.. give me a break
@@ -507,24 +504,20 @@ class GameStateImpl(GameStateBase):
                         self.levelMgr.curRamp += 1   # TODO manage curRamp better. Maybe take a BSP-type approach? i.e, look at all ramps, but only process a ramp is the bike's x pos < ramp's x pos
                     # NOTE the following substate change logic could just as easily go into a function (and maybe should?)
 
-                if self.levelMgr.curRamp > len(self.levelMgr.ramps):  # You've finished the level
-                    # TODO clean up this code; likely don't need to redo drawing here. Also, here, we should probably change to a different substate, and then handle the run summary there
-                    ##CALL RotateBike(self.bike.model.children['frame'].thx, self.bike.model.children['frame'].thy + 180, self.bike.model.children['frame'].thz)
-                    ##CALL RotateBar(self.bike.model.children['handlebar'].thx, self.bike.model.children['handlebar'].thy + 180, self.bike.model.children['handlebar'].thz)
-                    ##self.levelMgr.drawLevel()
+                if self.levelMgr.curRamp == len(self.levelMgr.ramps):  # You've finished the level
+                    #import pdb; pdb.set_trace()
+                    # TODO Make the end-of-level work without the crashing the program
                     self.staticMsg['presskey'].changeText("Press <Enter> to continue.")
             
                     if self.gamestats.score >= self.levelMgr.scoreToBeat:
-                        self.levelManager.levelFinished = True  # TODO evaluate whether this flag is necessary. If we need to stay in the level state for a while, then keep it. But if it makes more sense to increment the level counter here, and go to a new substate, then do that
+                        self.levelMgr.levelFinished = True  # TODO evaluate whether this flag is necessary. If we need to stay in the level state for a while, then keep it. But if it makes more sense to increment the level counter here, and go to a new substate, then do that
                         # TODO as always, look at what function is being called here
                         self.staticMsg['info'].changeText(getBeatLevelMsg(self.gamestats.successPhrases))
-                        # TODO add level increment here
+                        # TODO add level increment here - level += 1; initlevel; etc
+                        self.substate = PlayingSubstate.finishlevel
             
                     else:
-                        # TODO probably don't need this logic here. Simply change game substate to startlevel
-            
-                        self.bike.Init()    # TODO evaluate -- do we need to totally reinit here (Init() loads the model from disk.. Might be overkill)
-                        self.levelMgr.InitLevel()
+                        self.substate = PlayingSubstate.startlevel
                         self.staticMsg['info'].changeText(getLostLevelMsg(self.gamestats.failurePhrases))
                     # TODO wait for keypress here? Should there be substates for all these little things, like a substate for game-finished-at-first, and then for game-still-finished-show-run-summary, etc?
                     #WHILE INKEY$ <> CHR$(13): WEND
@@ -543,6 +536,8 @@ class GameStateImpl(GameStateBase):
             self.mm.clear()
             self._eventQueue.Clear()
             self._eventQueue.Initialize(64) # TOOD perhaps don't hardcode the # of events that can be handled by this queue
+
+            self.bike.model.resetModelTransform()
     
             #self.substate = PlayingSubstate.resetlevel     # TODO remove? Probably don't need PlayingSubstate.resetlevel
             self.substate = PlayingSubstate.startlevel
@@ -550,12 +545,10 @@ class GameStateImpl(GameStateBase):
 
         elif self.substate == PlayingSubstate.finishlevel:
             # TODO make sure the game switches into this substate
-            if LevelFinished:		# TODO make LevelFinished a vital stat (and probably also make the LevelManager aware of it? Not exactly sure how to handle this just yet
+            if self.levelMgr.LevelFinished:		# TODO make LevelFinished a vital stat (and probably also make the LevelManager aware of it? Not exactly sure how to handle this just yet
                 self.levelMgr.currentLevel = self.levelMgr.currentLevel + 1
             
                 if self.levelMgr.currentLevel > self.levelMgr.finalLevel:
-                    # TODO this message should stay up indefinitely.
-                    # TODO don't hardcode the message locations
                     self.staticMsg['info'].changeText("GAME OVER")
                     self.staticMsg['presskey'].changeText("Press <Enter> to return to main menu.")
                  
@@ -615,9 +608,11 @@ class GameStateImpl(GameStateBase):
         # Get the view matrix (i.e. camera view)
         #viewMatrix = self.refFrame.getMatrix()     # This matrix works.
         #viewMatrix = self.refFrame.getLookAtMatrix(self.bike._position[0], -self.bike._position[1], 250, self.bike._position[0], self.bike._position[1], 0, 0, -1, 0)  # experimental
-        viewMatrix = self.refFrame.getLookAtMatrix(self.bike._position[0], 0.0, 250, self.bike._position[0], 0.0, 0, 0, -1, 0)  # experimental
 
-        projectionMatrix = self.refFrame.getPerspectiveProjectionMatrix(35.0, screensize[0] / screensize[1], 0.5, 25.0)
+        #viewMatrix = self.refFrame.getLookAtMatrix(self.bike._position[0], -self.bike._position[1], 250, self.bike._position[0], -self.bike._position[1], 0, 0, -1, 0)  # Camera jumps with bike
+        viewMatrix = self.refFrame.getLookAtMatrix(self.bike._position[0], 10.0, 250, self.bike._position[0], self.bike._position[1], 0, 0, -1, 0)  # Camera stays on ground, looks up at bike on jumps
+
+        projectionMatrix = self.refFrame.getPerspectiveProjectionMatrix(28.0, screensize[0] / screensize[1], 0.5, 25.0)
 
 
         #import pdb; pdb.set_trace()
@@ -653,13 +648,9 @@ class GameStateImpl(GameStateBase):
 
         if self.bike.rider.maxspd == 0.0:
             self.bike.rider.maxspd = 1.0 # TODO delete this hack; the purpose of it is to simply get the game up and running, before implementing character selection
-        pygame.draw.line(self.appRef.surface_bg, (255,255,255), (bx - 1, by), (bx + l + 1, by + w))
-        pygame.draw.line(self.appRef.surface_bg, (0,255,0), (bx, by + 1), (bx + l * (self.bike._velocity[0] / self.bike.rider.maxspd), by + w - 1))  # TODO we still need to make maxspd a property of something
+        pygame.draw.rect(self.appRef.surface_bg, (255,255,255),  (bx - 1, by, l + 1, w)) 
+        pygame.draw.rect(self.appRef.surface_bg, (0,255,0), (bx, by + 1, l * (self.bike._velocity[0] / self.bike.rider.maxspd), w - 1))
         
-        
-        #LOCATE 1, 25: PRINT "Score: "; LTRIM$(STR$(gamestats.score))
-        #LOCATE 1, 40: PRINT "Level "; LTRIM$(STR$(self.levelMgr.currentLevel))
-        #LOCATE 1, 50: PRINT "Score to beat = "; LTRIM$(STR$(ScoreToBeat(self.levelMgr.currentLevel))); " pts."
         self.staticMsg['speed'].changeText("Speed: {}".format(self.bike.rider.xvel))
         textSurfaceSpeed = self.staticMsg['speed'].getTextSurface(self.mm._font)    # Here we're using the message manager's font
         self.appRef.surface_bg.blit(textSurfaceSpeed, (self.staticMsg['speed']._position[0], self.staticMsg['speed']._position[1]))
@@ -918,7 +909,7 @@ class GameStateImpl(GameStateBase):
 #This function returns a random beat-the-level phrase
 #==============================================================================
 def getBeatLevelMsg(successPhrases):
-    i = int( random.random() * len(successPhrases) ) + 1
+    i = int( random.random() * len(successPhrases) )
     return successPhrases[i]
 
 
@@ -927,7 +918,7 @@ def getBeatLevelMsg(successPhrases):
 #Returns a random crash phrase
 #==============================================================================
 def getCrashedMsg(crashPhrases):
-    p = int(random.random() * len(crashPhrases)) + 1
+    p = int(random.random() * len(crashPhrases))
     return crashPhrases[p]
 
 
@@ -937,7 +928,7 @@ def getCrashedMsg(crashPhrases):
 #but it could happen)
 #==============================================================================
 def getDidNotClearJumpMsg(rampCrashPhrases):
-    p = int(random.random() * len(rampCrashPhrases)) + 1
+    p = int(random.random() * len(rampCrashPhrases))
     return rampCrashPhrases[p]
 
 
@@ -945,7 +936,7 @@ def getDidNotClearJumpMsg(rampCrashPhrases):
 #FUNCTION getLostLevelMsg()
 #==============================================================================
 def getLostLevelMsg(failurePhrases):
-    p = int(random.random() * len(failurePhrases)) + 1
+    p = int(random.random() * len(failurePhrases))
     return failurePhrases[p]
     
 

@@ -187,6 +187,18 @@ class Wireframe(object):
             obj_ref._xpoints.append(Point3D(p.x, p.y, p.z))     # Then convert back to Point3D to comply with the original code for this game (TODO make some synergies between Point3D and Vector)
             # TODO optimize some stuff. Here, you construct Vectors for matrix mult, but then you construct Point3Ds. You do the same thing again in draw().. wasteful
 
+    def resetModelTransform(self, obj_ref=None):
+        ''' Recursively reset all models' Euler orientation to 0 degrees '''
+        if obj_ref is None:
+            obj_ref = self
+
+        self.thx = 0.0
+        self.thy = 0.0
+        self.thz = 0.0
+
+        if obj_ref.children:
+            for _, child_obj in obj_ref.children.iteritems():
+                self.resetModelTransform(child_obj)
 
 
     # TODO probably want to generalize the calls to store/get transformed points/lines/etc from the models. Conceivably, we would want to get multiple instances of the data, possibly returned from a func, rather than stored in class member data
