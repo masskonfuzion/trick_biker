@@ -48,8 +48,9 @@ class GameplayStats(object):
         self.score = 0
         self.paused = 0
         self.maxBikes = 11
-        self.numTrophies = []   # A list, to be read from/written to file (perhaps dotaccessdict, config file)
+        self.numTrophies = [ 0 ]   # A list, to be read from/written to file (perhaps dotaccessdict, config file) TODO read from file. Right now, we're hard-coding the list
         self.scoreToBeat = []   # A list, to be read from/written to file (perhaps dotaccessdict, config file) TODO on second thought, remove this from game stats; it should belong to a level object
+        self.bikeStyle = 0      # TODO update bikeStyle. It's meant to indicate which character you're playing as
 
         # Options/Config
         self.track3d = True     # load from config file?
@@ -276,7 +277,8 @@ class GameStateImpl(GameStateBase):
         self.gamestats = GameplayStats()  # TODO make sure variable scoping and/or function parameters are straight
 
         self.substate = PlayingSubstate()
-        self.substate = PlayingSubstate.startlevel  # TODO decide if you prefer to have an object with constructor/methods/etc
+        #self.substate = PlayingSubstate.startlevel  # TODO decide if you prefer to have an object with constructor/methods/etc
+        self.substate = PlayingSubstate.uninitialized
         self.appRef = appRef
         self.kbStateMgr = KeyboardStateManager()
 
@@ -384,6 +386,11 @@ class GameStateImpl(GameStateBase):
         # TODO note: there are probably things that should ALWAYS happen in the Update function, no matter the substate (e.g. message manager updates?
         self.mm.update(dt_s)    # TODO possibly also pass in a reference to the gameplay stats object? (that's how we did it Falldown)
 
+        if self.substate == PlayingSubstate.uninitialized:
+            # This state represents the very beginning of the game; one-time startup stuff. 
+            self.levelMgr.currentLevel = 1
+            self.substate = PlayingSubstate.startlevel
+
         if self.substate == PlayingSubstate.startlevel:
             # TODO break playingsubstates into their own functions, maybe
             # Initialize bike
@@ -396,7 +403,7 @@ class GameStateImpl(GameStateBase):
             self.bike.rider.maxspd = 130.0  # TODO don't hardcode biker abilities
             self.bike.rider.pump = 12.0     # TODO don't hardcode biker abilities
             self.bike.rider.jump = 3.0      # TODO don't hardcode biker abilities
-            self.bike.rider.turn = 180.0    # degrees per second # TODO don't hardcode biker abilities
+            self.bike.rider.turn = 270.0    # degrees per second # TODO don't hardcode biker abilities
 
             ## TODO Do something useful with frames of reference. The stuff you're doing with it right now is for testing purposes and will probably be replaced. Also, refFrame isn't defined in state.Init(). It's defined here
             self.refFrame.setUpVector(0,-1,0)
@@ -412,7 +419,7 @@ class GameStateImpl(GameStateBase):
             # TODO make viewport matrix, as well. Viewport happens after projection, so the main point is to compute vertices to fit in a desired viewport/window within the screen
 
             # Display level start message
-            self.levelMgr.currentLevel = 1   # TODO don't hardcode the level here. Set self.levelMgr.currentLevel = 1 at game init, then increment
+            self.levelMgr.levelFinished = False
             self.levelMgr.InitLevel()
             self.mm.setMessage("Level {}!".format(self.levelMgr.currentLevel), [ 400, 300 ], (192, 64, 64), 5 )  # TODO un-hardcode the render position of the message. But otherwise, use this as a template to replace other message and doMessage calls
             self.gamestats.reset()
@@ -513,6 +520,7 @@ class GameStateImpl(GameStateBase):
                     self.staticMsg['presskey'].changeText("Press <Enter> to continue.")
             
                     if self.gamestats.score >= self.levelMgr.scoreToBeat:
+                        #import pdb; pdb.set_trace()
                         self.levelMgr.levelFinished = True  # TODO evaluate whether this flag is necessary. If we need to stay in the level state for a while, then keep it. But if it makes more sense to increment the level counter here, and go to a new substate, then do that
                         # TODO as always, look at what function is being called here
                         self.staticMsg['info'].changeText(getBeatLevelMsg(self.gamestats.successPhrases))
@@ -527,7 +535,8 @@ class GameStateImpl(GameStateBase):
             
                     if self.gamestats.doRunSummary:
                         if self.levelMgr.levelFinished:
-                            self.gamestats.runSummary()
+                            #self.gamestats.runSummary()    # TODO implement the run summary. Right now, it's commented out
+                            pass
 
         elif self.substate == PlayingSubstate.crashed:
             # If we crashed, then wait here for user input, then go back to startLevel
@@ -548,7 +557,7 @@ class GameStateImpl(GameStateBase):
 
         elif self.substate == PlayingSubstate.finishlevel:
             # TODO make sure the game switches into this substate
-            if self.levelMgr.LevelFinished:		# TODO make LevelFinished a vital stat (and probably also make the LevelManager aware of it? Not exactly sure how to handle this just yet
+            if self.levelMgr.levelFinished:
                 self.levelMgr.currentLevel = self.levelMgr.currentLevel + 1
             
                 if self.levelMgr.currentLevel > self.levelMgr.finalLevel:
@@ -556,17 +565,20 @@ class GameStateImpl(GameStateBase):
                     self.staticMsg['presskey'].changeText("Press <Enter> to return to main menu.")
                  
                     # TODO still review this code. Most of it was written in QBASIC days, when you really sucked at programming
-                    if self.numTrophies[BikeStyle] < 2:	# NOTE: here, BikeStyle operates like "SelectedRider"
+                    if self.gamestats.numTrophies[self.gamestats.bikeStyle] < 2:    # NOTE: here, bikeStyle operates like "SelectedRider"
 	        			# write trophy data to file
-                        self.numTrophies[BikeStyle] += 1
+                        self.gamestats.numTrophies[self.gamestats.bikeStyle] += 1
             
                         self.staticMsg['info'].changeText("Congratulations, you got a trophy!!!")
 
                         #OPEN "trophies.dat" FOR OUTPUT AS #1    # TODO don't delete this; pythonize file output
                         #    FOR n = 1 TO 13
-                        #        PRINT #1, CHR$(ASC(LTRIM$(STR$(self.numTrophies[n]))) + 128)
+                        #        PRINT #1, CHR$(ASC(LTRIM$(STR$(self.gamestats.numTrophies[n]))) + 128)
                         #    NEXT n
                         #CLOSE
+                else:
+                    self.substate = PlayingSubstate.startlevel
+
         elif self.substate == PlayingSubstate.gameover:
             #TODO high scores
             #TODO go back to main menu (state change; not a mere substate change)

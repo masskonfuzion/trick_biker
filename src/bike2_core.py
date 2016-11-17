@@ -763,7 +763,7 @@ class LevelManager(object):
         self.gravity = vector.Vector(0.0, -140, 0.0)    # Gravity: set it and forget it
         self.currentLevel = 0
         self.levelFinished = False
-        self.finalLevel = 0     # Initialize final level when loading level data or something
+        self.finalLevel = 6     # TODO find a better way to Initialize final level. Right now, it's hardcoded. Maybe we can put level data in a file
         self.curRamp = 0
         self.trackHalfWidth = 25.0   # Track width is 2 * this number
 
