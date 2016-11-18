@@ -321,22 +321,27 @@ class GameStateImpl(GameStateBase):
         # TODO speaking of positions, we'll definitely need to tweak the positioning of these messages, and possibly (probably) allow dynamic positioning
         self.staticMsg['score'] = DisplayMessage()
         self.staticMsg['score'].create(txtStr="Score: ", position=[50, 10], color=(192, 64, 64))
+        self.staticMsg['score'].alive = True
 
         self.staticMsg['level'] = DisplayMessage()
         self.staticMsg['level'].create(txtStr="Level: ", position=[150, 10], color=(192, 64, 64))
+        self.staticMsg['level'].alive = True
 
         self.staticMsg['scoreToBeat'] = DisplayMessage()
         self.staticMsg['scoreToBeat'].create(txtStr="Score to beat: ", position=[250, 10], color=(192,64,64))
+        self.staticMsg['scoreToBeat'].alive = True
 
         self.staticMsg['speed'] = DisplayMessage()
         self.staticMsg['speed'].create(txtStr="Speed: ", position=[5,10], color=(192,64,64))
+        self.staticMsg['speed'].alive = True
 
         self.staticMsg['info'] = DisplayMessage()   # This message will be used for crash/pass level/fail level/etc. messages
         self.staticMsg['info'].create(txtStr="", position=[320, 200], color=(192,64,64))
+        self.staticMsg['info'].alive = False
 
         self.staticMsg['presskey'] = DisplayMessage()   # This message will be used for crash/pass level/fail level/etc. messages
         self.staticMsg['presskey'].create(txtStr="", position=[320, 400], color=(192,64,64))
-
+        self.staticMsg['presskey'].alive = False
 
     def EnqueueApplicationQuitMessage(self):
         """Enqueue a message for the application to shut itself down
@@ -446,6 +451,10 @@ class GameStateImpl(GameStateBase):
             self.mm.setMessage("Level {}!".format(self.levelMgr.currentLevel), [ 400, 300 ], (192, 64, 64), 5 )  # TODO un-hardcode the render position of the message. But otherwise, use this as a template to replace other message and doMessage calls
             self.gamestats.reset()
 
+            # Clear info & presskey messages
+            self.staticMsg['info'].alive = False
+            self.staticMsg['presskey'].alive = False
+
             self.substate = PlayingSubstate.playing # TODO maybe put a couple of seconds' delay before substate change, or maybe require a keypress
         elif self.substate == PlayingSubstate.playing:
             ## TODO note/correct - there is some redundancy between the RiderType class and the Bike class. e.g., RiderType has xvel, and Bike have velocity Vector (which has an x component)
@@ -486,11 +495,14 @@ class GameStateImpl(GameStateBase):
                     if self.bike.tricking or DidNotClearRamp :
                         msg = ""
                         if self.bike.tricking :
+                            self.staticMsg['info'].alive = True
                             self.staticMsg['info'].changeText(getCrashedMsg(self.gamestats.crashPhrases))
                             # NOTE: we only set the message here. The drawStatus function will render the message.  But also NOTE: we'll need to make sure to clear out the txtStr property to clear out messages (e.g. "You crashed" messages)
                         else:
+                            self.staticMsg['info'].alive = True
                             self.staticMsg['info'].changeText(getDidNotClearJumpMsg(self.gamestats.rampCrashPhrases))
                         # Aside: I know the code is weird in this game; I'm porting from QBASIC.. give me a break
+                        self.staticMsg['presskey'].alive = True
                         self.staticMsg['presskey'].changeText("Press <Enter> to continue.")
                         self.bike.crashed = True
                         self.substate = PlayingSubstate.crashed
@@ -539,18 +551,21 @@ class GameStateImpl(GameStateBase):
                 if self.levelMgr.curRamp == len(self.levelMgr.ramps):  # You've finished the level
                     #import pdb; pdb.set_trace()
                     # TODO Make the end-of-level work without the crashing the program
+                    self.staticMsg['presskey'].alive = True
                     self.staticMsg['presskey'].changeText("Press <Enter> to continue.")
             
                     if self.gamestats.score >= self.levelMgr.scoreToBeat:
                         #import pdb; pdb.set_trace()
                         self.levelMgr.levelFinished = True  # TODO evaluate whether this flag is necessary. If we need to stay in the level state for a while, then keep it. But if it makes more sense to increment the level counter here, and go to a new substate, then do that
                         # TODO as always, look at what function is being called here
+                        self.staticMsg['info'].alive = True
                         self.staticMsg['info'].changeText(getBeatLevelMsg(self.gamestats.successPhrases))
                         # TODO add level increment here - level += 1; initlevel; etc
                         self.substate = PlayingSubstate.finishlevel
             
                     else:
                         self.substate = PlayingSubstate.startlevel
+                        self.staticMsg['info'].alive = True
                         self.staticMsg['info'].changeText(getLostLevelMsg(self.gamestats.failurePhrases))
                     # TODO wait for keypress here? Should there be substates for all these little things, like a substate for game-finished-at-first, and then for game-still-finished-show-run-summary, etc?
                     #WHILE INKEY$ <> CHR$(13): WEND
@@ -579,18 +594,23 @@ class GameStateImpl(GameStateBase):
 
         elif self.substate == PlayingSubstate.finishlevel:
             # TODO make sure the game switches into this substate
-            if self.levelMgr.levelFinished:
+            if self.kbStateMgr.menuActionKeyPressed:
+                self.substate = PlayingSubstate.startlevel
+
                 self.levelMgr.currentLevel = self.levelMgr.currentLevel + 1
-            
+                
                 if self.levelMgr.currentLevel > self.levelMgr.finalLevel:
+                    self.staticMsg['info'].alive = True
                     self.staticMsg['info'].changeText("GAME OVER")
+                    self.staticMsg['presskey'].alive = True
                     self.staticMsg['presskey'].changeText("Press <Enter> to return to main menu.")
                  
                     # TODO still review this code. Most of it was written in QBASIC days, when you really sucked at programming
                     if self.gamestats.numTrophies[self.gamestats.bikeStyle] < 2:    # NOTE: here, bikeStyle operates like "SelectedRider"
-	        			# write trophy data to file
+	            		# write trophy data to file
                         self.gamestats.numTrophies[self.gamestats.bikeStyle] += 1
-            
+                
+                        self.staticMsg['info'].alive = True
                         self.staticMsg['info'].changeText("Congratulations, you got a trophy!!!")
 
                         #OPEN "trophies.dat" FOR OUTPUT AS #1    # TODO don't delete this; pythonize file output
@@ -598,9 +618,8 @@ class GameStateImpl(GameStateBase):
                         #        PRINT #1, CHR$(ASC(LTRIM$(STR$(self.gamestats.numTrophies[n]))) + 128)
                         #    NEXT n
                         #CLOSE
-                else:
-                    if self.kbStateMgr.menuActionKeyPressed:
-                        self.substate = PlayingSubstate.startlevel
+            #else:
+            #    if self.levelMgr.levelFinished: # TODO evaluate -- do we need to store levelFinished in the level manager?
 
         elif self.substate == PlayingSubstate.gameover:
             #TODO high scores
@@ -609,6 +628,7 @@ class GameStateImpl(GameStateBase):
             pass
 
         self.kbStateMgr.menuActionKeyPressed = False    # Clear the action key flag. This is important; it's used for "wait states", like "Press Enter to continue" before transitioning from, e.g. crashed to startlevel
+
 
     def PreRenderScene(self):
         pass
@@ -708,11 +728,13 @@ class GameStateImpl(GameStateBase):
         textSurfaceScoreToBeat = self.staticMsg['scoreToBeat'].getTextSurface(self.mm._font)
         self.appRef.surface_bg.blit(textSurfaceScoreToBeat, (self.staticMsg['scoreToBeat']._position[0], self.staticMsg['scoreToBeat']._position[1]))
 
-        if self.staticMsg['info']._text:   # Render info message if it exists
+        #if self.staticMsg['info']._text:   # Render info message if it exists
+        if self.staticMsg['info'].alive:
             textSurfaceInfo = self.staticMsg['info'].getTextSurface(self.mm._font)
             self.appRef.surface_bg.blit(textSurfaceInfo, (self.staticMsg['info']._position[0], self.staticMsg['info']._position[1]))
 
-        if self.staticMsg['presskey']._text:   # Render info message if it exists
+        #if self.staticMsg['presskey']._text:   # Render info message if it exists
+        if self.staticMsg['presskey'].alive:   # Render info message if it exists
             textSurfaceInfo = self.staticMsg['presskey'].getTextSurface(self.mm._font)
             self.appRef.surface_bg.blit(textSurfaceInfo, (self.staticMsg['presskey']._position[0], self.staticMsg['presskey']._position[1]))
 
