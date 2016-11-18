@@ -18,6 +18,8 @@ class KeyboardStateManager(object):
     def __init__(self):
         self.trickModifierKeys = [pygame.K_RSHIFT, pygame.K_LSHIFT]
         self.trickModifier = False      # Maybe future work could develop this class better; I just wanted to get something simple working
+        self.menuActionKeys = [pygame.K_RETURN]
+        self.menuActionKeyPressed = False   # This flag only tracks when a key is pressed, but not whether it's held or whatever.. Super simple
 
 class PlayingSubstate(object):
     """ This class implements an enum that allows the Playing state to keep track of its sub-states (e.g. Load level; playing; player crashed; game over; etc. """
@@ -347,6 +349,21 @@ class GameStateImpl(GameStateBase):
                                                }
                                   } )
 
+    ##def EnqueuEnterKey(self):
+    ##    """Enqueue a message when the user presses the Enter key to continue
+
+    ##       NOTE: There's actually nothing in this function that enforces that the Enter key triggers the
+    ##       enqueueing of the message. That happens in the game engine's ProcessCommands function
+    ##    """
+    ##    # TODO maybe make a state machine to handle state changes? The idea of this function is to enable the
+    ##    # "press any key to continue" before changing game substates, e.g., from crashed to startlevel
+    ##    self._eventQueue.Enqueue( { 'topic': 'Application',
+    ##                                'payload': { 'action': 'notify'
+    ##                                           , 'function_name': ''
+    ##                                           , 'params' : ''
+    ##                                           }
+    ##                              } )
+
     def ProcessEvents(self):
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
@@ -378,6 +395,11 @@ class GameStateImpl(GameStateBase):
                         fn_ptr(self, **argsDict)
                     else:
                         fn_ptr(self)
+
+                #elif msg['payload']['action'] == 'notify':
+                #    # The "notify" action merely notifies the listener that an action happened, but does not
+                #    # call for a specific action to be taken
+
 
             msg = self._eventQueue.Dequeue()
 
@@ -544,16 +566,16 @@ class GameStateImpl(GameStateBase):
             #self.bike.Init()    # TODO evaluate -- do we need to totally reinit here (Init() loads the model from disk.. Might be overkill)
             #self.levelMgr.InitLevel(self.levelMgr.currentLevel)    # TODO replace with level manager
 
-            # TODO make sure this clearing stuff is at the end of the substate? After user has presed any key to continue or whatever?
-            self.mm.clear()
-            self._eventQueue.Clear()
-            self._eventQueue.Initialize(64) # TOOD perhaps don't hardcode the # of events that can be handled by this queue
+            if self.kbStateMgr.menuActionKeyPressed:
+                self.mm.clear()
+                self._eventQueue.Clear()
+                self._eventQueue.Initialize(64) # TOOD perhaps don't hardcode the # of events that can be handled by this queue
 
-            self.bike.model.resetModelTransform()
+                self.bike.model.resetModelTransform()
     
-            #self.substate = PlayingSubstate.resetlevel     # TODO remove? Probably don't need PlayingSubstate.resetlevel
-            self.substate = PlayingSubstate.startlevel
-            # TODO perhaps wait for user input? (put that logic into ProcessEvents)
+                #self.substate = PlayingSubstate.resetlevel     # TODO remove? Probably don't need PlayingSubstate.resetlevel
+                self.substate = PlayingSubstate.startlevel
+                # TODO perhaps wait for user input? (put that logic into ProcessEvents)
 
         elif self.substate == PlayingSubstate.finishlevel:
             # TODO make sure the game switches into this substate
@@ -577,12 +599,16 @@ class GameStateImpl(GameStateBase):
                         #    NEXT n
                         #CLOSE
                 else:
-                    self.substate = PlayingSubstate.startlevel
+                    if self.kbStateMgr.menuActionKeyPressed:
+                        self.substate = PlayingSubstate.startlevel
 
         elif self.substate == PlayingSubstate.gameover:
             #TODO high scores
             #TODO go back to main menu (state change; not a mere substate change)
+            #if self.kbStateMgr.menuActionKeyPressed:   # TODO uncomment this line when you're ready
             pass
+
+        self.kbStateMgr.menuActionKeyPressed = False    # Clear the action key flag. This is important; it's used for "wait states", like "Press Enter to continue" before transitioning from, e.g. crashed to startlevel
 
     def PreRenderScene(self):
         pass
@@ -857,6 +883,9 @@ class GameStateImpl(GameStateBase):
         elif event.type == pygame.KEYUP:
             if event.key in self.kbStateMgr.trickModifierKeys:
                 self.kbStateMgr.trickModifier = False
+
+            elif event.key in self.kbStateMgr.menuActionKeys:
+                self.kbStateMgr.menuActionKeyPressed = True
 
 
         
