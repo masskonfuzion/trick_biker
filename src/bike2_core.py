@@ -8,7 +8,7 @@ import logging
 import math
 from pymkfgame.mkfmath import matrix
 from pymkfgame.mkfmath import vector
-from pymkfgame.mkfmath.common import DEGTORAD, coss, sinn, EPSILON
+from pymkfgame.mkfmath.common import DEGTORAD, coss, sinn, EPSILON, floatEq
 from pymkfgame.collision import aabb
 from pymkfgame.gameobj.gameobj import GameObj
 
@@ -138,7 +138,7 @@ class Wireframe(object):
         """ Take in a LineType object. Append the line object to self.lines """
         self.lines.append(line)
 
-    def draw(self, render_surface, obj_ref=None, matView=matrix.Matrix.matIdent()):
+    def draw(self, render_surface, obj_ref=None, matView=matrix.Matrix.matIdent(), matViewport=matrix.Matrix.matIdent()):
         """ Recursively draw objects """
         # TODO add a view transform parameter to all draw functions? (Maybe add it to the gameobj base class or whatever?)
         if obj_ref is None:
@@ -146,16 +146,23 @@ class Wireframe(object):
 
         if obj_ref.children:
             for _, child_obj in obj_ref.children.iteritems():
-                self.draw(render_surface, child_obj, matView)
+                self.draw(render_surface, child_obj, matView, matViewport)
 
         # Compute model points/vertices (well, right now, it's points..) transformed by view matrix # TODO! Also do this when drawing the track
-        xpoints_view = []
+        xpoints_viewport = []
         for xpoint_model in obj_ref._xpoints:
             #import pdb; pdb.set_trace()
+            # Apply the view matrix and perspective division
             p = matrix.mMultvec(matView, vector.Vector(xpoint_model[0], xpoint_model[1], xpoint_model[2], 1.0))
-            vector.vScale(p, 1/p[3], True)  # Divide by w, in case our view matrix has a perspective component in it (which it might, depending on how the view matrix was setup before drawing)
 
-            xpoints_view.append( Point3D(p.x, p.y, p.z)  )  # Not sure if it matters that we force xpoints_view to be a Point3D, but we do it because we made model._xpoints a Point3D
+            #if floatEq(p[3], 1.0, threshold=1e-6):  # TODO maybe tweak this comparison?
+            vector.vScale(p, 1/p[3], True)  # Divide by w, in case our view matrix has a perspective component in it (which it might, depending on how the view matrix was setup before drawing)
+            #print "model: ({:3f}, {:3f}, {:3f}, {:3f}) -> view: ({:3f}, {:3f}, {:3f}, {:3f})".format(xpoint_model.x, xpoint_model.y, xpoint_model.z, 1.0, p.x, p.y, p.z, p.w)
+
+            vp = matrix.mMultvec(matViewport, p)    # NOTE ideally, we could work in-place on these points/vertices
+
+            xpoints_viewport.append( Point3D(vp.x, vp.y, vp.z)  )  # Not sure if it matters that we force xpoints_viewport to be a Point3D, but we do it because we made model._xpoints a Point3D
+            #print "modelview: ({:3f}, {:3f}, {:3f}, {:3f}) -> viewport: ({:3f}, {:3f}, {:3f}, {:3f})".format(p.x, p.y, p.z, p.w, vp.x, vp.y, vp.z, vp.w)
             
         for lineData in obj_ref.lines:
             startPt = lineData[0] - 1   # subtract 1 because we programmed this game in QBASIC with base = 1, not 0
@@ -164,8 +171,8 @@ class Wireframe(object):
             #import pdb; pdb.set_trace()
 
             # Note; for now, we're ignoring z; we only care to test out the frame drawing in 2D
-            spCoords = xpoints_view[startPt]
-            epCoords = xpoints_view[endPt]
+            spCoords = xpoints_viewport[startPt]
+            epCoords = xpoints_viewport[endPt]
             #logging.debug("sPt:{} - {}, ePt:{} - {}".format(startPt, spCoords, endPt, epCoords))
             pygame.draw.line(render_surface, (220, 220, 220), (spCoords[0], spCoords[1]), (epCoords[0], epCoords[1]) )
 
@@ -354,11 +361,11 @@ class Bike(GameObj):
 
         self.model.updateModelTransform()  # Translate/rotate the bike (NOTE: this is regular ol' motion; for tricking, see updateTrick)
         self.aabb.computeBounds(self.model) # TODO see aabb module for thoughts on computeBounds() vs update()  # TODO - once we've updated transforms, AABB can simply use _xpoints; remove the _xpoints computation from AABB
-        self.updateTrick( self.gamestatsRef.activeTrick, dt_s )    # Make sure updateTrick cals the proper functions to set the bike's transform
+        self.updateTrick( self.gamestatsRef.activeTrick, dt_s )    # Make sure updateTrick calls the proper functions to set the bike's transform
 
-    def draw(self, screen, matView=matrix.Matrix.matIdent()):
-        self.model.draw(screen, matView=matView)
-        self.aabb.draw(screen, matView=matView)     # For debugging
+    def draw(self, screen, matView=matrix.Matrix.matIdent(), matViewport=matrix.Matrix.matIdent()):
+        self.model.draw(screen, matView=matView, matViewport=matViewport)
+        self.aabb.draw(screen, matView=matView, matViewport=matViewport)     # For debugging
 
 
     #==============================================================================
@@ -391,36 +398,37 @@ class Bike(GameObj):
                     self.model.children['frame'].thy += rot_vel
 
             
-            elif n == 3:               #180 degree barturn
+            elif n == 3:               #180 degree barturn -- this is a real X-Up
                 # TODO revisit the x-up. I'm not sure if it's working correctly
                 rot_vel = self.rider.turn * dt_s
                 self.model.thz += dt_s  # inject some nose angle drift
                 if self.trickPhase == 1:
                     self.model.children['handlebar'].thy = self.model.children['handlebar'].thy + rot_vel
-                if self.trickPhase == 6:
+                    
+                    if self.model.children['handlebar'].thy <= 180.0 and (self.model.children['handlebar'].thy + rot_vel) > 180.0:
+                        self.trickPhase = 2
+                elif self.trickPhase == 2:
                     self.model.children['handlebar'].thy = self.model.children['handlebar'].thy - rot_vel
              
-                if self.model.children['handlebar'].thy < 90.0 and (self.model.children['handlebar'].thy + rot_vel) >= 90.0 or \
-                   self.model.children['handlebar'].thy < 180.0 and (self.model.children['handlebar'].thy + rot_vel) >= 180.0 or \
-                   self.model.children['handlebar'].thy < 270.0 and (self.model.children['handlebar'].thy + rot_vel) >= 270.0 or \
-                   self.model.children['handlebar'].thy < 360.0 and (self.model.children['handlebar'].thy + rot_vel) >= 360.0:
-                #if self.model.children['handlebar'].thy % 90 == 0:
-                    self.trickPhase = self.trickPhase + 1
+                    if self.model.children['handlebar'].thy >= 0.0 and (self.model.children['handlebar'].thy - rot_vel) < 0.0:
+                        self.trickPhase = 3
+                        self.model.children['handlebar'].thy = 0.0
                 #if self.model.children['handlebar'].thy == self.memAngle:
-                if self.model.children['handlebar'].thy <= self.memAngle and self.model.children['handlebar'].thy + rot_vel > self.memAngle:
+                elif self.trickPhase == 3:
                     self.tricking = 0
-                    self.model.children['handlebar'].thy = self.memAngle
+                    #self.model.children['handlebar'].thy = self.memAngle
+                    self.model.children['handlebar'].thy = 0.0
                     self.memAngle = 0
                     self.trickPhase = 1
                     self.gamestatsRef.trickMsg = "X-Up!!!"
             
             elif n == 4:               #360 degree barspin
-                #if self.model.children['handlebar'].thy % 360 == 0:
                 rot_vel = self.rider.turn * dt_s
                 self.model.thz += dt_s  # inject some nose angle drift
-                if self.model.children['handlebar'].thy <= 360 and self.model.children['handlebar'].thy + rot_vel > 360.0:
+                if self.model.children['handlebar'].thy <= 360.0 and self.model.children['handlebar'].thy + rot_vel > 360.0:
                     self.tricking = 0
                     self.gamestatsRef.trickMsg = "Barspin!!!"
+                    self.model.children['handlebar'].thy = 0.0
                 else:
                     self.model.children['handlebar'].thy += self.rider.turn * dt_s
             
@@ -429,7 +437,7 @@ class Bike(GameObj):
                 rot_vel = self.rider.turn * tfactor * dt_s
                 if self.model.thz <= self.memAngle - 15 and (self.model.thz + rot_vel) % 360.0 > self.memAngle - 15:
                     self.tricking = 0
-                    self.model.thz = self.memAngle
+                    self.model.thz = self.memAngle - 15
                     self.memAngle = 0
                     self.gamestatsRef.trickMsg = "Backflip!!!"
                 else:
@@ -463,8 +471,8 @@ class Bike(GameObj):
                 rot_vel_x = self.rider.turn * dt_s
                 self.model.thx += rot_vel_x
 
-                rot_vel_z = self.rider.turn * dt_s
-                self.model.thz + rot_vel_z
+                #rot_vel_z = self.rider.turn * dt_s
+                #self.model.thz + rot_vel_z
             
                 if self.model.thx <= 360.0 and self.model.thx + rot_vel_x > 360.0:
                     self.tricking = 0
@@ -492,13 +500,20 @@ class Bike(GameObj):
                     rot_vel_x = self.rider.turn * dt_s * 0.5
                     self.model.thx += rot_vel_x
 
-                if self.trickPhase > 1 and self.trickPhase < 5:
+                elif self.trickPhase > 1 and self.trickPhase < 5:
                     rot_vel_x = self.rider.turn * dt_s * 0.5    # Terrible design here... This assignment is necessary to implement the "delay" while holding the tabletop trick in theh air
 
-                if self.trickPhase == 5:
+                elif self.trickPhase == 5:
                     rot_vel_x = -self.rider.turn * dt_s * 0.5
                     self.model.thx += rot_vel_x
              
+                    #if self.model.children['frame'].thx % 360 == 0:
+                    if self.model.thx >= 0.0 and self.model.thx + rot_vel_x < 0.0:
+                        self.tricking = 0
+                        self.trickPhase = 1
+                        self.model.thx = 0.0
+                        self.gamestatsRef.trickMsg = "Tabletop!!!"
+            
                 #if self.model.children['frame'].thx % 90 == 0:
 
                 if self.model.thx <= 90.0 and self.model.thx + rot_vel_x > 90.0:
@@ -506,13 +521,6 @@ class Bike(GameObj):
                     self.trickPhase += 1
                     # TODO make a way to hold a trick for a certain amount of time
 
-                #if self.model.children['frame'].thx % 360 == 0:
-                if self.model.thx >= 0.0 and self.model.thx + rot_vel_x < 0.0:
-                    self.tricking = 0
-                    self.trickPhase = 1
-                    self.model.thx = 0.0
-                    self.gamestatsRef.trickMsg = "Tabletop!!!"
-            
             elif n == 10:        #Twisting Corkscrew
                 rot_vel = self.rider.turn * dt_s * .6
 
@@ -533,8 +541,10 @@ class Bike(GameObj):
                 if self.trickPhase == 1 and self.model.thz >= self.memAngle + 90:
                     self.trickPhase = 2
             
-                if self.trickPhase == 2:
+                elif self.trickPhase == 2:
                     rot_vel_tailwhip = self.rider.turn * dt_s * .8
+
+                    #print "thy:{}, rot_vel:{}".format(self.model.children['frame'].thy, rot_vel_tailwhip)
 
                     if self.model.children['frame'].thy <= 360.0 and self.model.children['frame'].thy + rot_vel_tailwhip > 360.0:
                         self.trickPhase = 3
@@ -542,11 +552,13 @@ class Bike(GameObj):
                     else:
                         self.model.children['frame'].thy += rot_vel_tailwhip
             
-                if self.model.thz >= self.memAngle + 330:
-                    self.tricking = 0
-                    self.memAngle = 0
-                    self.trickPhase = 1
-                    self.gamestatsRef.trickMsg = "Backflip Tailwhip!!!"
+                elif self.trickPhase == 3:
+                    if self.model.thz >= self.memAngle + 330:
+                        self.tricking = 0
+                        self.memAngle = 0
+                        self.trickPhase = 1
+                        self.gamestatsRef.trickMsg = "Backflip Tailwhip!!!"
+                        #self.model.children['frame'].thy = 0.0
                  
             elif n == 12:                    #360 turn + 360 barspin
                 #self.model.children['frame'].thz = self.model.children['frame'].thz + 1
@@ -606,7 +618,7 @@ class Bike(GameObj):
                 
                     if self.model.thz <= self.memAngle - 60:
                         self.trickPhase = 2
-                        print "to trickphase 2"
+                        #print "to trickphase 2"
 
                 elif self.trickPhase == 2:
                     rot_vel = -self.rider.turn * dt_s
@@ -615,7 +627,7 @@ class Bike(GameObj):
                     if self.model.children['handlebar'].thy >= -180.0 and self.model.children['handlebar'].thy + rot_vel < -180.0:
                         self.model.children['handlebar'].thy = -180.0
                         self.trickPhase = 3
-                        print "to trickphase 3"
+                        #print "to trickphase 3"
 
                 elif self.trickPhase == 3:
                     rot_vel = self.rider.turn * dt_s
@@ -623,7 +635,7 @@ class Bike(GameObj):
                     if self.model.children['handlebar'].thy <= 0.0 and self.model.children['handlebar'].thy + rot_vel > 0.0:
                         self.model.children['handlebar'].thy = 0.0
                         self.trickPhase = 4
-                        print "to trickphase 4"
+                        #print "to trickphase 4"
             
                 elif self.trickPhase == 4:
                     rot_vel = self.rider.turn * dt_s * 0.6
@@ -634,69 +646,71 @@ class Bike(GameObj):
                         self.trickPhase = 1
                         self.memAngle = 0
                         self.gamestatsRef.trickMsg = "Air Endo + Bar Twist!!!"
-                        print "Sweet!"
+                        #print "Sweet!"
             
             elif n == 15:                #Turndown  # TODO make a correct turndown.. This isn't a turndown
 
-                if self.trickPhase < 6:
+                if self.trickPhase == 1:
                     rot_vel_z = self.rider.turn * dt_s
-                    rot_vel_y = self.rider.turn * dt_s # TODO make a better way to track what the rotational velocities should be
+                    self.model.thz += rot_vel_z
+                    
+                    if self.model.thz <= 80.0 and self.model.thz + rot_vel_z > 80.0:
+                        self.trickPhase = 2
 
-                    if self.model.children['frame'].thy <= 90.0 and self.model.children['frame'].thy + rot_vel_y > 90.0:  # TODO come up with a better way to hold a pose
-                        self.model.children['frame'].thy = 90.0
-                        self.trickPhase = self.trickPhase + 1
-                        print self.trickPhase
-                    else:
-                        self.model.children['frame'].thy += rot_vel_y
-                        self.model.thz += rot_vel_z
-                
-                elif self.trickPhase == 6:
-                    rot_vel_y = -self.rider.turn * dt_s
-                    self.model.children['frame'].thy += rot_vel_y
+                elif self.trickPhase == 2:
+                    rot_vel_y = self.rider.turn * dt_s * 0.8
+                    self.model.children['handlebar'].thy += rot_vel_y
 
+                    if self.model.children['handlebar'].thy <= 180.0 and self.model.children['handlebar'].thy + rot_vel_y > 180.0:
+                        self.model.children['handlebar'].thy = 180.0
+                        self.trickPhase = 3
+
+                elif self.trickPhase == 3:
+                    rot_vel_y = -self.rider.turn * dt_s * 0.8
+                    self.model.children['handlebar'].thy += rot_vel_y
+                    if self.model.children['handlebar'].thy >= 0.0 and self.model.children['handlebar'].thy + rot_vel_y < 0.0:
+                        self.model.children['handlebar'].thy = 0.0
+                        self.trickPhase = 4
+
+                elif self.trickPhase == 4:
                     rot_vel_z = -self.rider.turn * dt_s
                     self.model.thz += rot_vel_z
-
-                    if self.model.children['frame'].thy >= 0.0 and self.model.children['frame'].thy + rot_vel_y < 0.0:
-                        #self.model.children['frame'].thz = self.model.children['frame'].thz + 30
-                        #self.model.children['handlebar'].thz = self.model.children['frame'].thz
-                        self.model.children['frame'].thy = 0.0
+                    
+                    if self.model.thz >= self.memAngle and self.model.thz + rot_vel_z < self.memAngle:
+                        self.model.thz = self.memAngle
                         self.trickPhase = 1
                         self.tricking = 0
                         self.gamestatsRef.trickMsg = "Turndown!!!"
             
-                #self.model.children['frame'].thz = 80: self.model.children['frame'].thx = 0
-                #self.model.children['handlebar'].thy = 0: self.model.children['handlebar'].thz = self.model.children['frame'].thz: self.model.children['handlebar'].thx = 0
-            
             elif n == 16:            #Flair
                 if self.trickPhase == 1: #or self.trickPhase == 3
-                    rot_vel = self.rider.turn * dt_s    # multiply the rotational velocity by some factor to maek the action look good
-                    self.model.thz += rot_vel
+                    rot_vel_z = self.rider.turn * dt_s  # multiply the rotational velocity by some factor to maek the action look good
+                    self.model.thz += rot_vel_z
             
-                if self.trickPhase == 1 and self.model.thz >= self.memAngle + 135:
-                    self.trickPhase = 2
+                    if self.model.thz >= self.memAngle + 15:
+                        self.trickPhase = 2
             
                 if self.trickPhase == 2:
                     rot_vel_z = self.rider.turn * dt_s * .5
                     self.model.thz += rot_vel_z
             
-                    rot_vel_y = self.rider.turn * dt_s
+                    rot_vel_y = self.rider.turn * dt_s * 0.5
                     self.model.thy += rot_vel_y
             
-                if self.trickPhase == 2 and self.model.thy < 360.0 and self.model.thy + rot_vel_y >= 360.0:
-                    self.model.thy = 0.0
-                    self.trickPhase = 3
+                    if self.model.thy < 360.0 and self.model.thy + rot_vel_y >= 360.0:
+                        self.model.thy = 0.0
+                        self.trickPhase = 3
             
                 if self.trickPhase == 3:
-                    rot_vel = self.rider.turn * dt_s
+                    rot_vel = self.rider.turn * dt_s * 0.5
                     self.model.thz += rot_vel
             
-                if self.trickPhase == 3 and self.model.thz >= self.memAngle + 330:
-                    self.tricking = 0
-                    self.trickPhase = 1
-                    self.model.thz = self.memAngle
-                    self.memAngle = 0
-                    self.gamestatsRef.trickMsg = "Flair!!!"
+                    if self.trickPhase == 3 and self.model.thz >= self.memAngle + 330:
+                        self.tricking = 0
+                        self.trickPhase = 1
+                        self.model.thz = self.memAngle
+                        self.memAngle = 0
+                        self.gamestatsRef.trickMsg = "Flair!!!"
 
         else:   # not tricking:
             # NOTE the following code was in this location in the QBASIC game, because all the variables were global. But in the Python version, this stuff probably belongs in the playing state code, so we copied it
@@ -864,7 +878,7 @@ class LevelManager(object):
     #SUB drawLevel
     #
     #==============================================================================
-    def drawLevel(self, screen, stats_and_configs, matView=matrix.Matrix.matIdent()):
+    def drawLevel(self, screen, stats_and_configs, matView=matrix.Matrix.matIdent(), matViewport=matrix.Matrix.matIdent()):
         # TODO maybe come back and optimize performance here? (reduce # of floating pt operations?)
         for n in range(0, len(self.ramps)):
             ramp_length = self.ramps[n].length * coss(self.ramps[n].incline)
@@ -888,32 +902,46 @@ class LevelManager(object):
             land_sy = self.ramps[n].y
             land_sz = 0.0
 
-            # Apply view transformation
+            # Apply view transformation first, then do perspective division, then do viewport transformation
+            # TODO add a test, like in bike.draw() to only do perspective division if the w component is not 1?
             launch_start_near = matrix.mMultvec(matView, vector.Vector(launch_sx, launch_sy, self.trackHalfWidth, 1.0))
-            launch_start_far = matrix.mMultvec(matView, vector.Vector(launch_sx, launch_sy, -self.trackHalfWidth, 1.0))
             vector.vScale(launch_start_near, 1 / launch_start_near[3], True)  # Divide out w's (necessary only for perspective projection, where w has a value; will have no effect with other projections, because w will be 1)
+            launch_start_near_viewport = matrix.mMultvec(matViewport, launch_start_near)
+
+
+            launch_start_far = matrix.mMultvec(matView, vector.Vector(launch_sx, launch_sy, -self.trackHalfWidth, 1.0))
             vector.vScale(launch_start_far, 1 / launch_start_far[3], True)  # Divide out w's (necessary only for perspective projection, where w has a value; will have no effect with other projections, because w will be 1)
+            launch_start_far_viewport = matrix.mMultvec(matViewport, launch_start_far)
             
             launch_end_near = matrix.mMultvec(matView, vector.Vector(launch_ex, launch_ey, self.trackHalfWidth, 1.0))
-            launch_end_far = matrix.mMultvec(matView, vector.Vector(launch_ex, launch_ey, -self.trackHalfWidth, 1.0))
             vector.vScale(launch_end_near, 1 / launch_end_near[3], True)
+            launch_end_near_viewport = matrix.mMultvec(matViewport, launch_end_near)
+
+            launch_end_far = matrix.mMultvec(matView, vector.Vector(launch_ex, launch_ey, -self.trackHalfWidth, 1.0))
             vector.vScale(launch_end_far, 1 / launch_end_far[3], True)
+            launch_end_far_viewport = matrix.mMultvec(matViewport, launch_end_far)
 
             land_start_near = matrix.mMultvec(matView, vector.Vector(land_sx, land_sy, self.trackHalfWidth, 1.0))
-            land_start_far = matrix.mMultvec(matView, vector.Vector(land_sx, land_sy, -self.trackHalfWidth, 1.0))
             vector.vScale(land_start_near, 1 / land_start_near[3], True)
+            land_start_near_viewport = matrix.mMultvec(matViewport, land_start_near)
+
+            land_start_far = matrix.mMultvec(matView, vector.Vector(land_sx, land_sy, -self.trackHalfWidth, 1.0))
             vector.vScale(land_start_far, 1 / land_start_far[3], True)
+            land_start_far_viewport = matrix.mMultvec(matViewport, land_start_far)
 
             land_end_near = matrix.mMultvec(matView, vector.Vector(land_ex, land_ey, self.trackHalfWidth, 1.0))
-            land_end_far = matrix.mMultvec(matView, vector.Vector(land_ex, land_ey, -self.trackHalfWidth, 1.0))
             vector.vScale(land_end_near, 1 / land_end_near[3], True)
+            land_end_near_viewport = matrix.mMultvec(matViewport, land_end_near)
+
+            land_end_far = matrix.mMultvec(matView, vector.Vector(land_ex, land_ey, -self.trackHalfWidth, 1.0))
             vector.vScale(land_end_far, 1 / land_end_far[3], True)
+            land_end_far_viewport = matrix.mMultvec(matViewport, land_end_far)
 
-            pygame.draw.line(screen, (192, 192, 192), (launch_start_near[0], launch_start_near[1]), (launch_end_near[0], launch_end_near[1]))
-            pygame.draw.line(screen, (192, 192, 192), (launch_start_far[0], launch_start_far[1]), (launch_end_far[0], launch_end_far[1]))
+            pygame.draw.line(screen, (192, 192, 192), (launch_start_near_viewport[0], launch_start_near_viewport[1]), (launch_end_near_viewport[0], launch_end_near_viewport[1]))
+            pygame.draw.line(screen, (192, 192, 192), (launch_start_far_viewport[0], launch_start_far_viewport[1]), (launch_end_far_viewport[0], launch_end_far_viewport[1]))
 
-            pygame.draw.line(screen, (192, 192, 192), (land_start_near[0], land_start_near[1]), (land_end_near[0], land_end_near[1]))
-            pygame.draw.line(screen, (192, 192, 192), (land_start_far[0], land_start_far[1]), (land_end_far[0], land_end_far[1]))
+            pygame.draw.line(screen, (192, 192, 192), (land_start_near_viewport[0], land_start_near_viewport[1]), (land_end_near_viewport[0], land_end_near_viewport[1]))
+            pygame.draw.line(screen, (192, 192, 192), (land_start_far_viewport[0], land_start_far_viewport[1]), (land_end_far_viewport[0], land_end_far_viewport[1]))
 
-            pygame.draw.line(screen, (192, 192, 192), (launch_end_near[0], launch_end_near[1]), (launch_end_far[0], launch_end_far[1]))
-            pygame.draw.line(screen, (192, 192, 192), (land_end_near[0], land_end_near[1]), (land_end_far[0], land_end_far[1]))
+            pygame.draw.line(screen, (192, 192, 192), (launch_end_near_viewport[0], launch_end_near_viewport[1]), (launch_end_far_viewport[0], launch_end_far_viewport[1]))
+            pygame.draw.line(screen, (192, 192, 192), (land_end_near_viewport[0], land_end_near_viewport[1]), (land_end_far_viewport[0], land_end_far_viewport[1]))

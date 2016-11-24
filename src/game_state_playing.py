@@ -320,7 +320,7 @@ class GameStateImpl(GameStateBase):
         # TODO/NOTE: the position list could just as easily be a tuple (might even lead to better performance?)
         # TODO speaking of positions, we'll definitely need to tweak the positioning of these messages, and possibly (probably) allow dynamic positioning
         self.staticMsg['score'] = DisplayMessage()
-        self.staticMsg['score'].create(txtStr="Score: ", position=[50, 10], color=(192, 64, 64))
+        self.staticMsg['score'].create(txtStr="Score: ", position=[80, 10], color=(192, 64, 64))
         self.staticMsg['score'].alive = True
 
         self.staticMsg['level'] = DisplayMessage()
@@ -382,10 +382,10 @@ class GameStateImpl(GameStateBase):
         # TODO maybe put this command extraction logic into a function at the application class level (or base gamestate level). We're reusing the logic in every gamestate instance
         msg = self._eventQueue.Dequeue()
         while msg:
-            print "DEBUG Dequeued message: {}".format(msg)
+            #print "DEBUG Dequeued message: {}".format(msg)
             topic = msg['topic']
             for listener_obj_dict in self._eventQueue.RegisteredListeners(topic):
-                print "DEBUG Registered Listener {} processing message {}".format(listener_obj_dict['name'], msg['payload'])
+                #print "DEBUG Registered Listener {} processing message {}".format(listener_obj_dict['name'], msg['payload'])
 
                 # Evaluate the 'action' key to know what to do. The action dictates what other information is required to be in the message
                 if msg['payload']['action'] == 'call_function':
@@ -394,7 +394,7 @@ class GameStateImpl(GameStateBase):
                     fn_ptr = getattr(objRef, msg['payload']['function_name'])
                     argsDict = eval("dict({})".format(msg['payload']['params']))    # params should be a comma-separated list of key=value pairs, e.g. "a = 5, b = 3"
 
-                    print "function args: {}".format(argsDict)
+                    #print "function args: {}".format(argsDict)
                     if argsDict:
                         # In this particular gamestate, we want an argsdict to translate to kwargs. This is because the mixer class is written with kwargs (other classes in other gamestates use dicts, in which case, we pass in argsDict as-is))
                         fn_ptr(self, **argsDict)
@@ -638,6 +638,9 @@ class GameStateImpl(GameStateBase):
         # TODO all objects should update their vertices based on view transforms here. Ideally, we should use a vertex buffer to combine all renderable vertices, and then apply the xform to the buffer.. But, we're not there yet
         self.appRef.surface_bg.fill((0,0,0))
 
+        # =====================================================================
+        # Viewport matrix
+        # =====================================================================
         # Set up viewport transformation # TODO put viewport transformation into a class?
         screensize = self.appRef.surface_bg.get_size()
 
@@ -647,44 +650,113 @@ class GameStateImpl(GameStateBase):
         ymin_vp = 0
         ymax_vp = screensize[1]
 
-        xmin_world = -300   # world coords will be mapped into the viewport space
-        xmax_world = 300
+        zmin_vp = -1.0  #...or should we choose 0? Nah, probably not. 0 introduces division by 0
+        zmax_vp = 1.0
 
-        ymin_world = -200
-        ymax_world = 200
+        #xmin_world = -300   # world coords will be mapped into the viewport space
+        #xmax_world = 300
 
+        #ymin_world = -200
+        #ymax_world = 200
+
+        xmin_world = self.bike._position[0] - 300
+        xmax_world = self.bike._position[0] + 300
+
+        ymin_world = self.bike._position[1] - 200
+        ymax_world = self.bike._position[1] + 200
+
+        zmin_world = -1.0    # set zmin and zmax to match the view frustum
+        zmax_world = 1.0
+        
         m_x = float(xmax_vp - xmin_vp) / float(xmax_world - xmin_world)     # m for linear equation form y = mx + b
         b_x = float(xmin_vp + xmax_vp) / float(2)                           # b for linear equation form y = mx + b
 
         m_y = float(ymax_vp - ymin_vp) / float(ymax_world - ymin_world)
         b_y = float(ymin_vp + ymax_vp) / float(2)
 
+        m_z = float(zmax_vp - zmin_vp) / float(zmax_world - zmin_world)
+        b_z = float(zmin_vp + zmax_vp) / float(2)
 
         # NOTE viewport matrix defines how the already-projected gameworld will appear on the screen
-        viewportMatrix = matrix.Matrix(m_x, 0, 0, 0,
-                                       0, m_y, 0, 0,
-                                       0, 0, 0, 0,
-                                       b_x, b_y, 0, 1)
+        # Note also that the viewport matrix should have a translation component for rendering to a rectangle
+        # of arbitrary size and location on the screen (or, for that matter, in the game world, in which case
+        # it could also have an arbitrary orientation in the world space)
+        #viewportMatrix = matrix.Matrix(m_x, 0, 0, 0,
+        #                               0, m_y, 0, 0,
+        #                               0, 0, m_z, 0,
+        #                               b_x, b_y, b_z, 1)
 
+        #vl = 0
+        #vr = screensize[0]
+        #vt = 0
+        #vb = screensize[1]  # Note: Top is 0 because Pygame puts (0,0) at top-left of screen
+        #vf = 1.0
+        #vn = -1.0   # Note that "near" is -1, because we're a left-handed coord system. Because math (+z goes into screen)
+        #viewportMatrix = matrix.Matrix((vr - vl) / 2.0, 0, 0, (vr + vl) / 2.0,
+        #                               0, (vt - vb) / 2.0, 0, (vt + vb) / 2.0,
+        #                               0, 0, (vf - vn) / 2.0, (vf + vn) / 2.0,
+        #                               0, 0, 0, 1)
+
+        vl = 0
+        vr = screensize[0]
+        vt = 0
+        vb = screensize[1]  # Note: Top is 0 because Pygame puts (0,0) at top-left of screen
+        vf = 1.0
+        vn = -1.0   # Note that "near" is -1, because we're a left-handed coord system. Because math (+z goes into screen)
+        ox = screensize[0] / 2.0
+        oy = screensize[1] / 2.0
+        oz = 0
+
+        viewportMatrix = matrix.Matrix((vr - vl) / 2.0, 0, 0, (vr + vl) / 2.0,
+                                       0, (vt - vb) / 2.0, 0, (vt + vb) / 2.0,
+                                       0, 0, (vf - vn) / 2.0, (vf + vn) / 2.0,
+                                       ox, oy, oz, 1)
+
+
+        #viewportMatrix = matrix.Matrix.matIdent()
+
+        # =====================================================================
+        # View matrix (i.e., camera/"lookat")
+        # =====================================================================
         # Get the view matrix (i.e. camera view)
+        #viewMatrix = matrix.Matrix.matIdent()
         #viewMatrix = self.refFrame.getMatrix()     # This matrix works.
         #viewMatrix = self.refFrame.getLookAtMatrix(self.bike._position[0], -self.bike._position[1], 250, self.bike._position[0], self.bike._position[1], 0, 0, -1, 0)  # experimental
 
-        #viewMatrix = self.refFrame.getLookAtMatrix(self.bike._position[0], -self.bike._position[1], 250, self.bike._position[0], -self.bike._position[1], 0, 0, -1, 0)  # Camera jumps with bike
-        viewMatrix = self.refFrame.getLookAtMatrix(self.bike._position[0], 10.0, 250, self.bike._position[0], self.bike._position[1], 0, 0, -1, 0)  # Camera stays on ground, looks up at bike on jumps
+        #viewMatrix = self.refFrame.getLookAtMatrix(self.bike._position[0], -self.bike._position[1] - 100, 250, self.bike._position[0], -self.bike._position[1], 0, 0, -1, 0)  # Camera jumps with bike
 
-        projectionMatrix = self.refFrame.getPerspectiveProjectionMatrix(28.0, screensize[0] / screensize[1], 0.5, 25.0)
+        #viewMatrix = self.refFrame.getLookAtMatrix(self.bike._position[0], -self.bike._position[1] - 100, 350, self.bike._position[0], -self.bike._position[1], 0, 0, -1, 0)  # Camera jumps with bike (take 2)
+
+        # TODO need to write functions to rotate the view in a manner corresponding to vector/coords created by gluLookAt
+        th = 8 
+        cam_dist = 700 
+        rotCamAboutZ = matrix.Matrix.matRotX(th * DEGTORAD)
+        viewMatrix = self.refFrame.getLookAtMatrix(self.bike._position[0], 0.0, -cam_dist, self.bike._position[0], self.bike._position[1], 0, 0, 1, 0)  # Camera jumps with bike (take 2)
+        viewMatrix = matrix.mMultmat(rotCamAboutZ, viewMatrix)
+
+        #viewMatrix = self.refFrame.getLookAtMatrix(self.bike._position[0], 10.0, 250, self.bike._position[0], self.bike._position[1], 0, 0, -1, 0)  # Camera stays on ground, looks up at bike on jumps
+        #print "viewMatrix\n{}".format(viewMatrix)
+
+        # =====================================================================
+        # Projection matrix
+        # =====================================================================
+        projectionMatrix = self.refFrame.getPerspectiveProjectionMatrix(45.0, screensize[0] / screensize[1], 1.0, 500.0)
+        #projectionMatrix = self.refFrame.getPerspectiveProjectionMatrix(30.0, screensize[0] / screensize[1], 0.5, 5.0)
+        #print "projection matrix\n{}".format(projectionMatrix)
 
 
+        # =====================================================================
+        # Matrix composition
+        # =====================================================================
         #import pdb; pdb.set_trace()
-        # TODO View first, then projection, then viewport
-        #composedViewportAndView = matrix.mMultmat(viewportMatrix, viewMatrix)
+        # View first, then projection, then viewport
+        #composedViewportAndView = matrix.mMultmat(viewportMatrix, viewMatrix)  # TODO delete
 
         composedProjAndView = matrix.mMultmat(projectionMatrix, viewMatrix)
-        composedViewportAndView = matrix.mMultmat(viewportMatrix, composedProjAndView)
+        #composedViewportAndView = matrix.mMultmat(viewportMatrix, composedProjAndView) # TODO delete
 
-        self.levelMgr.drawLevel(self.appRef.surface_bg, self.gamestats, matView=composedViewportAndView)
-        self.bike.draw(self.appRef.surface_bg, matView=composedViewportAndView)
+        self.levelMgr.drawLevel(self.appRef.surface_bg, self.gamestats, matView=composedProjAndView, matViewport=viewportMatrix)
+        self.bike.draw(self.appRef.surface_bg, matView=composedProjAndView, matViewport=viewportMatrix)
 
         #self.levelMgr.drawLevel(self.appRef.surface_bg, self.gamestats, matView=viewMatrix)
         #self.bike.draw(self.appRef.surface_bg, matView=viewMatrix)
@@ -801,7 +873,7 @@ class GameStateImpl(GameStateBase):
                     else:
                         self.gamestats.activeTrick = 3
                         self.bike.tricking = 1
-                        self.bike.memAngle = self.bike.model.children['handlebar'].thy  # Use handlebar angle because this trick is a handlebar spin
+                        #self.bike.memAngle = self.bike.model.children['handlebar'].thy  # Use handlebar angle because this trick is a handlebar spin
                         self.gamestats.numTricks += 1
                         self.levelMgr.trickCounter = self.levelMgr.trickCounter + 1
             
@@ -885,6 +957,7 @@ class GameStateImpl(GameStateBase):
                         self.levelMgr.trickCounter = self.levelMgr.trickCounter + 1
 
                     else:
+                        #import pdb; pdb.set_trace()
                         self.bike.memAngle = self.bike.model.thz
                         self.gamestats.activeTrick = 15
                         self.bike.tricking = 1
