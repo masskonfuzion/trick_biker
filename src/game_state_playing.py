@@ -728,11 +728,22 @@ class GameStateImpl(GameStateBase):
         #viewMatrix = self.refFrame.getLookAtMatrix(self.bike._position[0], -self.bike._position[1] - 100, 350, self.bike._position[0], -self.bike._position[1], 0, 0, -1, 0)  # Camera jumps with bike (take 2)
 
         # TODO need to write functions to rotate the view in a manner corresponding to vector/coords created by gluLookAt
-        th = 8 
+        th = 5 
         cam_dist = 700 
-        rotCamAboutZ = matrix.Matrix.matRotX(th * DEGTORAD)
-        viewMatrix = self.refFrame.getLookAtMatrix(self.bike._position[0], 0.0, -cam_dist, self.bike._position[0], self.bike._position[1], 0, 0, 1, 0)  # Camera jumps with bike (take 2)
-        viewMatrix = matrix.mMultmat(rotCamAboutZ, viewMatrix)
+        rotateCam = matrix.Matrix.matRotY(-th * DEGTORAD)  # Use -th because world moves as the inverse of the camera
+        translateCam = matrix.Matrix.matTrans(self.bike._position[0], self.bike._position[1], 0.0)
+
+        eye = vector.Vector(0, 0, -cam_dist, 1.0)
+        #cameraTransform = matrix.mMultmat(translateCam, rotateCam)
+        cameraTransform = translateCam
+        eye = matrix.mMultvec(cameraTransform, eye)
+
+        lookat = self.bike._position
+        #upVec = vector.Vector(0, 2 * math.sqrt(2), 2 * math.sqrt(2))
+        upVec = vector.Vector(0, 1, 0)
+
+        viewMatrix = self.refFrame.getLookAtMatrix(eye[0], eye[1], eye[2], lookat[0], lookat[1], lookat[2], upVec[0], upVec[1], upVec[2])  # Camera jumps with bike (take 2)
+        viewMatrix = matrix.mMultmat(rotateCam, viewMatrix)
 
         #viewMatrix = self.refFrame.getLookAtMatrix(self.bike._position[0], 10.0, 250, self.bike._position[0], self.bike._position[1], 0, 0, -1, 0)  # Camera stays on ground, looks up at bike on jumps
         #print "viewMatrix\n{}".format(viewMatrix)
@@ -740,7 +751,7 @@ class GameStateImpl(GameStateBase):
         # =====================================================================
         # Projection matrix
         # =====================================================================
-        projectionMatrix = self.refFrame.getPerspectiveProjectionMatrix(45.0, screensize[0] / screensize[1], 1.0, 500.0)
+        projectionMatrix = self.refFrame.getPerspectiveProjectionMatrix(35.0, screensize[0] / screensize[1], 1.0, 500.0)
         #projectionMatrix = self.refFrame.getPerspectiveProjectionMatrix(30.0, screensize[0] / screensize[1], 0.5, 5.0)
         #print "projection matrix\n{}".format(projectionMatrix)
 
