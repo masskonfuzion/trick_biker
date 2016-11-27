@@ -34,6 +34,7 @@ class Point3D(object):
     def __getitem__(self, index):
         ## accessor
         # TODO rework this Point3D class. You were taking shortcuts to get a quick demo running. But you should make this class use a list as its underlying data structure; and then write an access that returns an item from the array
+        # TODO perhaps Point3D should default to w = 1.0, where Vector defaults to w = 0.0. Otherwise, maybe get rid of Point3D entirely, and only use Vectors?
         if index == 0:
             return self.x
         elif index == 1:
@@ -153,11 +154,9 @@ class Wireframe(object):
         for xpoint_model in obj_ref._xpoints:
             #import pdb; pdb.set_trace()
             # Apply the view matrix and perspective division
-            p = matrix.mMultvec(matView, vector.Vector(xpoint_model[0], xpoint_model[1], xpoint_model[2], 1.0))
+            p = matrix.mMultvec(matView, vector.Vector(xpoint_model[0], xpoint_model[1], xpoint_model[2], 1.0)) # TODO btw, standardize - use Point3D, which should include homogeneous coord; or don't. But don't waste time converting types
 
-            #if floatEq(p[3], 1.0, threshold=1e-6):  # TODO maybe tweak this comparison?
-            vector.vScale(p, 1/p[3], True)  # Divide by w, in case our view matrix has a perspective component in it (which it might, depending on how the view matrix was setup before drawing)
-            #print "model: ({:3f}, {:3f}, {:3f}, {:3f}) -> view: ({:3f}, {:3f}, {:3f}, {:3f})".format(xpoint_model.x, xpoint_model.y, xpoint_model.z, 1.0, p.x, p.y, p.z, p.w)
+            #print "model: ({:3f}, {:3f}, {:3f}, {:3f}) -> modelview: ({:3f}, {:3f}, {:3f}, {:3f})".format(xpoint_model.x, xpoint_model.y, xpoint_model.z, 1.0, p.x, p.y, p.z, p.w)
 
             vp = matrix.mMultvec(matViewport, p)    # NOTE ideally, we could work in-place on these points/vertices
 
@@ -177,7 +176,11 @@ class Wireframe(object):
             pygame.draw.line(render_surface, (220, 220, 220), (spCoords[0], spCoords[1]), (epCoords[0], epCoords[1]) )
 
     def updateModelTransform(self, obj_ref=None, composed_xform=matrix.Matrix.matIdent()):
-        ''' Update _xpoints based ONLY on the "model" transforms -- translation and rotation '''
+        ''' Update _xpoints based ONLY on the "model" transforms -- translation and rotation
+
+            This function updates the geometry of the bike, whether or not it is being drawn. This function is
+            used for computing where the bike is, in the world, for collision detection, etc.
+        '''
         if obj_ref is None:
             obj_ref = self
 
@@ -904,37 +907,31 @@ class LevelManager(object):
 
             # Apply view transformation first, then do perspective division, then do viewport transformation
             # TODO add a test, like in bike.draw() to only do perspective division if the w component is not 1?
+            epsilon = 1e-6
+
             launch_start_near = matrix.mMultvec(matView, vector.Vector(launch_sx, launch_sy, self.trackHalfWidth, 1.0))
-            vector.vScale(launch_start_near, 1 / launch_start_near[3], True)  # Divide out w's (necessary only for perspective projection, where w has a value; will have no effect with other projections, because w will be 1)
             launch_start_near_viewport = matrix.mMultvec(matViewport, launch_start_near)
 
 
             launch_start_far = matrix.mMultvec(matView, vector.Vector(launch_sx, launch_sy, -self.trackHalfWidth, 1.0))
-            vector.vScale(launch_start_far, 1 / launch_start_far[3], True)  # Divide out w's (necessary only for perspective projection, where w has a value; will have no effect with other projections, because w will be 1)
             launch_start_far_viewport = matrix.mMultvec(matViewport, launch_start_far)
             
             launch_end_near = matrix.mMultvec(matView, vector.Vector(launch_ex, launch_ey, self.trackHalfWidth, 1.0))
-            vector.vScale(launch_end_near, 1 / launch_end_near[3], True)
             launch_end_near_viewport = matrix.mMultvec(matViewport, launch_end_near)
 
             launch_end_far = matrix.mMultvec(matView, vector.Vector(launch_ex, launch_ey, -self.trackHalfWidth, 1.0))
-            vector.vScale(launch_end_far, 1 / launch_end_far[3], True)
             launch_end_far_viewport = matrix.mMultvec(matViewport, launch_end_far)
 
             land_start_near = matrix.mMultvec(matView, vector.Vector(land_sx, land_sy, self.trackHalfWidth, 1.0))
-            vector.vScale(land_start_near, 1 / land_start_near[3], True)
             land_start_near_viewport = matrix.mMultvec(matViewport, land_start_near)
 
             land_start_far = matrix.mMultvec(matView, vector.Vector(land_sx, land_sy, -self.trackHalfWidth, 1.0))
-            vector.vScale(land_start_far, 1 / land_start_far[3], True)
             land_start_far_viewport = matrix.mMultvec(matViewport, land_start_far)
 
             land_end_near = matrix.mMultvec(matView, vector.Vector(land_ex, land_ey, self.trackHalfWidth, 1.0))
-            vector.vScale(land_end_near, 1 / land_end_near[3], True)
             land_end_near_viewport = matrix.mMultvec(matViewport, land_end_near)
 
             land_end_far = matrix.mMultvec(matView, vector.Vector(land_ex, land_ey, -self.trackHalfWidth, 1.0))
-            vector.vScale(land_end_far, 1 / land_end_far[3], True)
             land_end_far_viewport = matrix.mMultvec(matViewport, land_end_far)
 
             pygame.draw.line(screen, (192, 192, 192), (launch_start_near_viewport[0], launch_start_near_viewport[1]), (launch_end_near_viewport[0], launch_end_near_viewport[1]))

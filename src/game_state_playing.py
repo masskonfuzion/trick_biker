@@ -644,74 +644,16 @@ class GameStateImpl(GameStateBase):
         # Set up viewport transformation # TODO put viewport transformation into a class?
         screensize = self.appRef.surface_bg.get_size()
 
-        xmin_vp = 0 # xmin for the viewport
-        xmax_vp = screensize[0]
-
-        ymin_vp = 0
-        ymax_vp = screensize[1]
-
-        zmin_vp = -1.0  #...or should we choose 0? Nah, probably not. 0 introduces division by 0
-        zmax_vp = 1.0
-
-        #xmin_world = -300   # world coords will be mapped into the viewport space
-        #xmax_world = 300
-
-        #ymin_world = -200
-        #ymax_world = 200
-
-        xmin_world = self.bike._position[0] - 300
-        xmax_world = self.bike._position[0] + 300
-
-        ymin_world = self.bike._position[1] - 200
-        ymax_world = self.bike._position[1] + 200
-
-        zmin_world = -1.0    # set zmin and zmax to match the view frustum
-        zmax_world = 1.0
-        
-        m_x = float(xmax_vp - xmin_vp) / float(xmax_world - xmin_world)     # m for linear equation form y = mx + b
-        b_x = float(xmin_vp + xmax_vp) / float(2)                           # b for linear equation form y = mx + b
-
-        m_y = float(ymax_vp - ymin_vp) / float(ymax_world - ymin_world)
-        b_y = float(ymin_vp + ymax_vp) / float(2)
-
-        m_z = float(zmax_vp - zmin_vp) / float(zmax_world - zmin_world)
-        b_z = float(zmin_vp + zmax_vp) / float(2)
-
-        # NOTE viewport matrix defines how the already-projected gameworld will appear on the screen
-        # Note also that the viewport matrix should have a translation component for rendering to a rectangle
-        # of arbitrary size and location on the screen (or, for that matter, in the game world, in which case
-        # it could also have an arbitrary orientation in the world space)
-        #viewportMatrix = matrix.Matrix(m_x, 0, 0, 0,
-        #                               0, m_y, 0, 0,
-        #                               0, 0, m_z, 0,
-        #                               b_x, b_y, b_z, 1)
-
-        #vl = 0
-        #vr = screensize[0]
-        #vt = 0
-        #vb = screensize[1]  # Note: Top is 0 because Pygame puts (0,0) at top-left of screen
-        #vf = 1.0
-        #vn = -1.0   # Note that "near" is -1, because we're a left-handed coord system. Because math (+z goes into screen)
-        #viewportMatrix = matrix.Matrix((vr - vl) / 2.0, 0, 0, (vr + vl) / 2.0,
-        #                               0, (vt - vb) / 2.0, 0, (vt + vb) / 2.0,
-        #                               0, 0, (vf - vn) / 2.0, (vf + vn) / 2.0,
-        #                               0, 0, 0, 1)
-
         vl = 0
         vr = screensize[0]
         vt = 0
         vb = screensize[1]  # Note: Top is 0 because Pygame puts (0,0) at top-left of screen
         vf = 1.0
         vn = -1.0   # Note that "near" is -1, because we're a left-handed coord system. Because math (+z goes into screen)
-        ox = screensize[0] / 2.0
-        oy = screensize[1] / 2.0
-        oz = 0
-
-        viewportMatrix = matrix.Matrix((vr - vl) / 2.0, 0, 0, (vr + vl) / 2.0,
-                                       0, (vt - vb) / 2.0, 0, (vt + vb) / 2.0,
-                                       0, 0, (vf - vn) / 2.0, (vf + vn) / 2.0,
-                                       ox, oy, oz, 1)
-
+        viewportMatrix = matrix.Matrix((vr - vl) / 2.0, 0, 0, 0,
+                                       0, (vt - vb) / 2.0, 0, 0,
+                                       0, 0, (vf - vn) / 2.0, 0,
+                                       (vr + vl) / 2.0, (vt + vb) / 2.0, (vf + vn) / 2.0, 1)
 
         #viewportMatrix = matrix.Matrix.matIdent()
 
@@ -728,43 +670,93 @@ class GameStateImpl(GameStateBase):
         #viewMatrix = self.refFrame.getLookAtMatrix(self.bike._position[0], -self.bike._position[1] - 100, 350, self.bike._position[0], -self.bike._position[1], 0, 0, -1, 0)  # Camera jumps with bike (take 2)
 
         # TODO need to write functions to rotate the view in a manner corresponding to vector/coords created by gluLookAt
-        th = 5 
-        cam_dist = 700 
-        rotateCam = matrix.Matrix.matRotY(-th * DEGTORAD)  # Use -th because world moves as the inverse of the camera
-        translateCam = matrix.Matrix.matTrans(self.bike._position[0], self.bike._position[1], 0.0)
+        cam_dist = 400 
 
-        eye = vector.Vector(0, 0, -cam_dist, 1.0)
-        #cameraTransform = matrix.mMultmat(translateCam, rotateCam)
-        cameraTransform = translateCam
-        eye = matrix.mMultvec(cameraTransform, eye)
+        #th = 5 
+        #rotateCam = matrix.Matrix.matRotY(-th * DEGTORAD)  # Use -th because world moves as the inverse of the camera
+        #translateCam = matrix.Matrix.matTrans(self.bike._position[0], self.bike._position[1], 0.0)
 
-        lookat = self.bike._position
-        #upVec = vector.Vector(0, 2 * math.sqrt(2), 2 * math.sqrt(2))
-        upVec = vector.Vector(0, 1, 0)
+        #eye = vector.Vector(0, 0, -cam_dist, 1.0)
+        ##cameraTransform = matrix.mMultmat(translateCam, rotateCam)
+        #cameraTransform = translateCam
+        #eye = matrix.mMultvec(cameraTransform, eye)
 
-        viewMatrix = self.refFrame.getLookAtMatrix(eye[0], eye[1], eye[2], lookat[0], lookat[1], lookat[2], upVec[0], upVec[1], upVec[2])  # Camera jumps with bike (take 2)
-        viewMatrix = matrix.mMultmat(rotateCam, viewMatrix)
+        #lookat = self.bike._position
+        ##upVec = vector.Vector(0, 2 * math.sqrt(2), 2 * math.sqrt(2))
+        #upVec = vector.Vector(0, 1, 0)
+
+        #viewMatrix = self.refFrame.getLookAtMatrix(eye[0], eye[1], eye[2], lookat[0], lookat[1], lookat[2], upVec[0], upVec[1], upVec[2])  # Camera jumps with bike (take 2)
+        #viewMatrix = matrix.mMultmat(rotateCam, viewMatrix)
+
+
+
+        thx = 0 
+        thy = 0 
+
+
+        #camPosition = vector.Vector(self.bike._position[0], 20.0, -cam_dist, 1.0)
+        #camFocusVec = vector.vSub(camPosition, self.bike._position) # Get the vector pointing from the bike to the camera (not normalized)
+
+        #upVec = vector.Vector(0, 1, 0)  # NOT necessarily the camera's up vector.. We're using this to compute the orthonormal basis vectors of the camera
+
+        #camFwdVec = -camFocusVec
+        #vector.vNormalize(camFwdVec)
+        ##print "&camFwd={}, &camFocus={}".format(hex(id(camFwdVec)), hex(id(camFocusVec)))
+
+        #camRightVec = vector.vCross(upVec, camFwdVec)
+        #vector.vNormalize(camRightVec)  # TODO maybe make noramlize() a Vector member function? It's commented out in the vector class code
+
+        #camUpVec = vector.vCross(camFwdVec, camRightVec)
+        #vector.vNormalize(camUpVec)
+
+        ##camRotPitch = matrix.Matrix.matRotFromAxisAngle(thx * DEGTORAD, camRightVec[0], camRightVec[1], camRightVec[2])
+        ##camRotYaw = matrix.Matrix.matRotFromAxisAngle(thy * DEGTORAD, camUpVec[0], camUpVec[1], camUpVec[2])
+        #camRotPitch = matrix.Matrix.matRotX(-thx * DEGTORAD)
+        #camRotYaw = matrix.Matrix.matRotY(-thy * DEGTORAD)
+        #camRotComposed = matrix.mMultmat(camRotYaw, camRotPitch)
+
+        #camRotatedPosition = matrix.mMultvec(camRotComposed, camFocusVec)   # This is actually the new position of the camera
+        #camRotatedPosition = vector.vAdd(camRotatedPosition, self.bike._position)   # Restore the position offset for the camera
+        ##camTranslate = matrix.Matrix.matTrans(-camRotatedPosition[0], -camRotatedPosition[1], -camRotatedPosition[2])
+        #camRotatedUpVec = matrix.mMultvec(camRotComposed, camUpVec)
+
+        ##print "Original cam pos:{}, Rotated cam pos:{}".format(camPosition, camRotatedPosition)
+        ##print "Original cam up:{}, Rotated cam up:{}".format(camUpVec, camRotatedUpVec)
+        #
+
+        ##viewMatrix = camRotComposed
+        ##viewMatrix = matrix.mMultmat(camTranslate, camRotComposed)
+        #viewMatrix = self.refFrame.getLookAtMatrix(camRotatedPosition[0], camRotatedPosition[1], camRotatedPosition[2], self.bike._position[0], -self.bike._position[1], self.bike._position[2], camRotatedUpVec[0], camRotatedUpVec[1], camRotatedUpVec[2])
+        #viewMatrix = matrix.Matrix(camRightVec[0], camRightVec[1], camRightVec[2], 0.0,
+        #                           camUpVec[0], camUpVec[1], camUpVec[2], 0.0,
+        #                           camFwdVec[0], camFwdVec[1], camFwdVec[2], 0.0,
+        #                           -camRotatedPosition[0], -camRotatedPosition[1], -camRotatedPosition[2], 1.0)
+
 
         #viewMatrix = self.refFrame.getLookAtMatrix(self.bike._position[0], 10.0, 250, self.bike._position[0], self.bike._position[1], 0, 0, -1, 0)  # Camera stays on ground, looks up at bike on jumps
+        #viewMatrix = self.refFrame.getLookAtMatrix(self.bike._position[0], 10.0, -200, self.bike._position[0], self.bike._position[1], 0, 0, 1, 0)  # Camera stays on ground, looks up at bike on jumps
+
+        camPosition = vector.Vector(self.bike._position[0], 60, -200)
+        viewMatrix = self.refFrame.getLookAtMatrix(camPosition[0], camPosition[1], camPosition[2], self.bike._position[0], self.bike._position[1], self.bike._position[2], 0, 1, 0)  # Camera stays on ground, looks up at bike on jumps
+        #viewMatrix = matrix.Matrix.matIdent()
         #print "viewMatrix\n{}".format(viewMatrix)
 
         # =====================================================================
         # Projection matrix
         # =====================================================================
-        projectionMatrix = self.refFrame.getPerspectiveProjectionMatrix(35.0, screensize[0] / screensize[1], 1.0, 500.0)
+        projectionMatrix = self.refFrame.getPerspectiveProjectionMatrix(50.0, screensize[0] / screensize[1], 1.0, 100.0)
         #projectionMatrix = self.refFrame.getPerspectiveProjectionMatrix(30.0, screensize[0] / screensize[1], 0.5, 5.0)
+        #projectionMatrix = matrix.Matrix.matIdent()
         #print "projection matrix\n{}".format(projectionMatrix)
 
 
         # =====================================================================
         # Matrix composition
         # =====================================================================
-        #import pdb; pdb.set_trace()
-        # View first, then projection, then viewport
-        #composedViewportAndView = matrix.mMultmat(viewportMatrix, viewMatrix)  # TODO delete
-
         composedProjAndView = matrix.mMultmat(projectionMatrix, viewMatrix)
-        #composedViewportAndView = matrix.mMultmat(viewportMatrix, composedProjAndView) # TODO delete
+        #composedProjAndView = viewMatrix
+        #composedProjAndView = projectionMatrix
+        #composedProjAndView = matrix.Matrix.matIdent()
 
         self.levelMgr.drawLevel(self.appRef.surface_bg, self.gamestats, matView=composedProjAndView, matViewport=viewportMatrix)
         self.bike.draw(self.appRef.surface_bg, matView=composedProjAndView, matViewport=viewportMatrix)
