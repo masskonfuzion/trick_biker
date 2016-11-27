@@ -736,7 +736,7 @@ class GameStateImpl(GameStateBase):
         #viewMatrix = self.refFrame.getLookAtMatrix(self.bike._position[0], 10.0, 250, self.bike._position[0], self.bike._position[1], 0, 0, -1, 0)  # Camera stays on ground, looks up at bike on jumps
         #viewMatrix = self.refFrame.getLookAtMatrix(self.bike._position[0], 10.0, -200, self.bike._position[0], self.bike._position[1], 0, 0, 1, 0)  # Camera stays on ground, looks up at bike on jumps
 
-        camPosition = vector.Vector(self.bike._position[0], 60, -200)
+        camPosition = vector.Vector(self.bike._position[0], 500, -460)
         viewMatrix = self.refFrame.getLookAtMatrix(camPosition[0], camPosition[1], camPosition[2], self.bike._position[0], self.bike._position[1], self.bike._position[2], 0, 1, 0)  # Camera stays on ground, looks up at bike on jumps
         #viewMatrix = matrix.Matrix.matIdent()
         #print "viewMatrix\n{}".format(viewMatrix)
