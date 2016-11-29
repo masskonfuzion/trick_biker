@@ -29,7 +29,8 @@ class PlayingSubstate(object):
     crashed = 2
     resetlevel = 3      # TODO: remove? may not be necessary
     finishlevel = 4
-    gameover = 5
+    runsummary = 5
+    gameover = 6
 
     # NOTE: haven't decided whether I want to have this class simply be an enum, or an actual object, with methods and such
     #def __init__:
@@ -55,7 +56,6 @@ class GameplayStats(object):
         self.bikeStyle = 0      # TODO update bikeStyle. It's meant to indicate which character you're playing as
 
         # Options/Config
-        self.track3d = True     # load from config file?
         self.doRunSummary = True    # TODO: Remove; shouldn't be optional... Always do the run summary...
         self.crowdOn = False
         self.sloMo = False
@@ -569,11 +569,6 @@ class GameStateImpl(GameStateBase):
                     # TODO wait for keypress here? Should there be substates for all these little things, like a substate for game-finished-at-first, and then for game-still-finished-show-run-summary, etc?
                     #WHILE INKEY$ <> CHR$(13): WEND
             
-                    if self.gamestats.doRunSummary:
-                        if self.levelMgr.levelPassed:
-                            #self.gamestats.runSummary()    # TODO implement the run summary. Right now, it's commented out
-                            pass
-
         elif self.substate == PlayingSubstate.crashed:
             # If we crashed, then wait here for user input, then go back to startLevel
 
@@ -594,33 +589,42 @@ class GameStateImpl(GameStateBase):
         elif self.substate == PlayingSubstate.finishlevel:
             # TODO make sure the game switches into this substate
             if self.kbStateMgr.menuActionKeyPressed:
-                self.substate = PlayingSubstate.startlevel
 
                 if self.levelMgr.levelPassed:
                     self.levelMgr.currentLevel = self.levelMgr.currentLevel + 1
                     self.levelMgr.levelPassed = False   # I think we reset this when we init a new level, but just to be sure, do it here. Then review the code later, and remove extraneous crap.
-                
-                if self.levelMgr.currentLevel > self.levelMgr.finalLevel:
-                    self.staticMsg['info'].alive = True
-                    self.staticMsg['info'].changeText("GAME OVER")
-                    self.staticMsg['presskey'].alive = True
-                    self.staticMsg['presskey'].changeText("Press <Enter> to return to main menu.")
-                 
-                    # TODO still review this code. Most of it was written in QBASIC days, when you really sucked at programming
-                    if self.gamestats.numTrophies[self.gamestats.bikeStyle] < 2:    # NOTE: here, bikeStyle operates like "SelectedRider"
-	            		# write trophy data to file
-                        self.gamestats.numTrophies[self.gamestats.bikeStyle] += 1
-                
-                        self.staticMsg['info'].alive = True
-                        self.staticMsg['info'].changeText("Congratulations, you got a trophy!!!")
+                    self.substate = PlayingSubstate.runsummary
 
-                        #OPEN "trophies.dat" FOR OUTPUT AS #1    # TODO don't delete this; pythonize file output
-                        #    FOR n = 1 TO 13
-                        #        PRINT #1, CHR$(ASC(LTRIM$(STR$(self.gamestats.numTrophies[n]))) + 128)
-                        #    NEXT n
-                        #CLOSE
-            #else:
-            #    if self.levelMgr.levelPassed: # TODO evaluate -- do we need to store levelPassed in the level manager?
+                    if self.levelMgr.currentLevel > self.levelMgr.finalLevel:
+                        self.staticMsg['info'].alive = True
+                        self.staticMsg['info'].changeText("GAME OVER")
+                        self.staticMsg['presskey'].alive = True
+                        self.staticMsg['presskey'].changeText("Press <Enter> to return to main menu.")
+                     
+                        # TODO still review this code. Most of it was written in QBASIC days, when you really sucked at programming
+                        if self.gamestats.numTrophies[self.gamestats.bikeStyle] < 2:    # NOTE: here, bikeStyle operates like "SelectedRider"
+	                		# write trophy data to file
+                            self.gamestats.numTrophies[self.gamestats.bikeStyle] += 1
+                    
+                            self.staticMsg['info'].alive = True
+                            self.staticMsg['info'].changeText("Congratulations, you got a trophy!!!")
+
+                            #OPEN "trophies.dat" FOR OUTPUT AS #1    # TODO don't delete this; pythonize file output
+                            #    FOR n = 1 TO 13
+                            #        PRINT #1, CHR$(ASC(LTRIM$(STR$(self.gamestats.numTrophies[n]))) + 128)
+                            #    NEXT n
+                            #CLOSE
+                else:
+                    self.substate = PlayingSubstate.startlevel
+                
+        elif self.substate == PlayingSubstate.runsummary:
+            self.staticMsg['info'].alive = True
+            self.staticMsg['info'].changeText("TODO: Run summary goes here :-D")
+            self.staticMsg['presskey'].alive = True
+            self.staticMsg['presskey'].changeText("Press <Enter> to return to go to next level")
+
+            if self.kbStateMgr.menuActionKeyPressed:
+                    self.substate = PlayingSubstate.startlevel
 
         elif self.substate == PlayingSubstate.gameover:
             #TODO high scores
