@@ -446,7 +446,7 @@ class GameStateImpl(GameStateBase):
             # TODO make viewport matrix, as well. Viewport happens after projection, so the main point is to compute vertices to fit in a desired viewport/window within the screen
 
             # Display level start message
-            self.levelMgr.levelFinished = False
+            self.levelMgr.levelPassed = False
             self.levelMgr.InitLevel()
             self.mm.setMessage("Level {}!".format(self.levelMgr.currentLevel), [ 400, 300 ], (192, 64, 64), 5 )  # TODO un-hardcode the render position of the message. But otherwise, use this as a template to replace other message and doMessage calls
             self.gamestats.reset()
@@ -554,24 +554,23 @@ class GameStateImpl(GameStateBase):
                     self.staticMsg['presskey'].alive = True
                     self.staticMsg['presskey'].changeText("Press <Enter> to continue.")
             
+                    self.substate = PlayingSubstate.finishlevel
                     if self.gamestats.score >= self.levelMgr.scoreToBeat:
                         #import pdb; pdb.set_trace()
-                        self.levelMgr.levelFinished = True  # TODO evaluate whether this flag is necessary. If we need to stay in the level state for a while, then keep it. But if it makes more sense to increment the level counter here, and go to a new substate, then do that
+                        self.levelMgr.levelPassed = True  # TODO evaluate whether this flag is necessary. If we need to stay in the level state for a while, then keep it. But if it makes more sense to increment the level counter here, and go to a new substate, then do that
                         # TODO as always, look at what function is being called here
                         self.staticMsg['info'].alive = True
                         self.staticMsg['info'].changeText(getBeatLevelMsg(self.gamestats.successPhrases))
                         # TODO add level increment here - level += 1; initlevel; etc
-                        self.substate = PlayingSubstate.finishlevel
             
                     else:
-                        self.substate = PlayingSubstate.startlevel
                         self.staticMsg['info'].alive = True
                         self.staticMsg['info'].changeText(getLostLevelMsg(self.gamestats.failurePhrases))
                     # TODO wait for keypress here? Should there be substates for all these little things, like a substate for game-finished-at-first, and then for game-still-finished-show-run-summary, etc?
                     #WHILE INKEY$ <> CHR$(13): WEND
             
                     if self.gamestats.doRunSummary:
-                        if self.levelMgr.levelFinished:
+                        if self.levelMgr.levelPassed:
                             #self.gamestats.runSummary()    # TODO implement the run summary. Right now, it's commented out
                             pass
 
@@ -597,7 +596,9 @@ class GameStateImpl(GameStateBase):
             if self.kbStateMgr.menuActionKeyPressed:
                 self.substate = PlayingSubstate.startlevel
 
-                self.levelMgr.currentLevel = self.levelMgr.currentLevel + 1
+                if self.levelMgr.levelPassed:
+                    self.levelMgr.currentLevel = self.levelMgr.currentLevel + 1
+                    self.levelMgr.levelPassed = False   # I think we reset this when we init a new level, but just to be sure, do it here. Then review the code later, and remove extraneous crap.
                 
                 if self.levelMgr.currentLevel > self.levelMgr.finalLevel:
                     self.staticMsg['info'].alive = True
@@ -619,7 +620,7 @@ class GameStateImpl(GameStateBase):
                         #    NEXT n
                         #CLOSE
             #else:
-            #    if self.levelMgr.levelFinished: # TODO evaluate -- do we need to store levelFinished in the level manager?
+            #    if self.levelMgr.levelPassed: # TODO evaluate -- do we need to store levelPassed in the level manager?
 
         elif self.substate == PlayingSubstate.gameover:
             #TODO high scores
@@ -662,81 +663,10 @@ class GameStateImpl(GameStateBase):
         # =====================================================================
         # Get the view matrix (i.e. camera view)
         #viewMatrix = matrix.Matrix.matIdent()
-        #viewMatrix = self.refFrame.getMatrix()     # This matrix works.
-        #viewMatrix = self.refFrame.getLookAtMatrix(self.bike._position[0], -self.bike._position[1], 250, self.bike._position[0], self.bike._position[1], 0, 0, -1, 0)  # experimental
-
-        #viewMatrix = self.refFrame.getLookAtMatrix(self.bike._position[0], -self.bike._position[1] - 100, 250, self.bike._position[0], -self.bike._position[1], 0, 0, -1, 0)  # Camera jumps with bike
-
-        #viewMatrix = self.refFrame.getLookAtMatrix(self.bike._position[0], -self.bike._position[1] - 100, 350, self.bike._position[0], -self.bike._position[1], 0, 0, -1, 0)  # Camera jumps with bike (take 2)
-
-        # TODO need to write functions to rotate the view in a manner corresponding to vector/coords created by gluLookAt
         cam_dist = 400 
 
-        #th = 5 
-        #rotateCam = matrix.Matrix.matRotY(-th * DEGTORAD)  # Use -th because world moves as the inverse of the camera
-        #translateCam = matrix.Matrix.matTrans(self.bike._position[0], self.bike._position[1], 0.0)
-
-        #eye = vector.Vector(0, 0, -cam_dist, 1.0)
-        ##cameraTransform = matrix.mMultmat(translateCam, rotateCam)
-        #cameraTransform = translateCam
-        #eye = matrix.mMultvec(cameraTransform, eye)
-
-        #lookat = self.bike._position
-        ##upVec = vector.Vector(0, 2 * math.sqrt(2), 2 * math.sqrt(2))
-        #upVec = vector.Vector(0, 1, 0)
-
-        #viewMatrix = self.refFrame.getLookAtMatrix(eye[0], eye[1], eye[2], lookat[0], lookat[1], lookat[2], upVec[0], upVec[1], upVec[2])  # Camera jumps with bike (take 2)
-        #viewMatrix = matrix.mMultmat(rotateCam, viewMatrix)
-
-
-
-        thx = 0 
-        thy = 0 
-
-
-        #camPosition = vector.Vector(self.bike._position[0], 20.0, -cam_dist, 1.0)
-        #camFocusVec = vector.vSub(camPosition, self.bike._position) # Get the vector pointing from the bike to the camera (not normalized)
-
-        #upVec = vector.Vector(0, 1, 0)  # NOT necessarily the camera's up vector.. We're using this to compute the orthonormal basis vectors of the camera
-
-        #camFwdVec = -camFocusVec
-        #vector.vNormalize(camFwdVec)
-        ##print "&camFwd={}, &camFocus={}".format(hex(id(camFwdVec)), hex(id(camFocusVec)))
-
-        #camRightVec = vector.vCross(upVec, camFwdVec)
-        #vector.vNormalize(camRightVec)  # TODO maybe make noramlize() a Vector member function? It's commented out in the vector class code
-
-        #camUpVec = vector.vCross(camFwdVec, camRightVec)
-        #vector.vNormalize(camUpVec)
-
-        ##camRotPitch = matrix.Matrix.matRotFromAxisAngle(thx * DEGTORAD, camRightVec[0], camRightVec[1], camRightVec[2])
-        ##camRotYaw = matrix.Matrix.matRotFromAxisAngle(thy * DEGTORAD, camUpVec[0], camUpVec[1], camUpVec[2])
-        #camRotPitch = matrix.Matrix.matRotX(-thx * DEGTORAD)
-        #camRotYaw = matrix.Matrix.matRotY(-thy * DEGTORAD)
-        #camRotComposed = matrix.mMultmat(camRotYaw, camRotPitch)
-
-        #camRotatedPosition = matrix.mMultvec(camRotComposed, camFocusVec)   # This is actually the new position of the camera
-        #camRotatedPosition = vector.vAdd(camRotatedPosition, self.bike._position)   # Restore the position offset for the camera
-        ##camTranslate = matrix.Matrix.matTrans(-camRotatedPosition[0], -camRotatedPosition[1], -camRotatedPosition[2])
-        #camRotatedUpVec = matrix.mMultvec(camRotComposed, camUpVec)
-
-        ##print "Original cam pos:{}, Rotated cam pos:{}".format(camPosition, camRotatedPosition)
-        ##print "Original cam up:{}, Rotated cam up:{}".format(camUpVec, camRotatedUpVec)
-        #
-
-        ##viewMatrix = camRotComposed
-        ##viewMatrix = matrix.mMultmat(camTranslate, camRotComposed)
-        #viewMatrix = self.refFrame.getLookAtMatrix(camRotatedPosition[0], camRotatedPosition[1], camRotatedPosition[2], self.bike._position[0], -self.bike._position[1], self.bike._position[2], camRotatedUpVec[0], camRotatedUpVec[1], camRotatedUpVec[2])
-        #viewMatrix = matrix.Matrix(camRightVec[0], camRightVec[1], camRightVec[2], 0.0,
-        #                           camUpVec[0], camUpVec[1], camUpVec[2], 0.0,
-        #                           camFwdVec[0], camFwdVec[1], camFwdVec[2], 0.0,
-        #                           -camRotatedPosition[0], -camRotatedPosition[1], -camRotatedPosition[2], 1.0)
-
-
-        #viewMatrix = self.refFrame.getLookAtMatrix(self.bike._position[0], 10.0, 250, self.bike._position[0], self.bike._position[1], 0, 0, -1, 0)  # Camera stays on ground, looks up at bike on jumps
-        #viewMatrix = self.refFrame.getLookAtMatrix(self.bike._position[0], 10.0, -200, self.bike._position[0], self.bike._position[1], 0, 0, 1, 0)  # Camera stays on ground, looks up at bike on jumps
-
-        camPosition = vector.Vector(self.bike._position[0], 500, -460)
+        camPosition = vector.Vector(self.bike._position[0], self.bike._position[1] + 250, -360)  # Flying camera
+        #camPosition = vector.Vector(self.bike._position[0] - 25, 50, -250)  # Camera on ground
         viewMatrix = self.refFrame.getLookAtMatrix(camPosition[0], camPosition[1], camPosition[2], self.bike._position[0], self.bike._position[1], self.bike._position[2], 0, 1, 0)  # Camera stays on ground, looks up at bike on jumps
         #viewMatrix = matrix.Matrix.matIdent()
         #print "viewMatrix\n{}".format(viewMatrix)
@@ -744,7 +674,7 @@ class GameStateImpl(GameStateBase):
         # =====================================================================
         # Projection matrix
         # =====================================================================
-        projectionMatrix = self.refFrame.getPerspectiveProjectionMatrix(50.0, screensize[0] / screensize[1], 1.0, 100.0)
+        projectionMatrix = self.refFrame.getPerspectiveProjectionMatrix(60.0, screensize[0] / screensize[1], 1.0, 200.0)
         #projectionMatrix = self.refFrame.getPerspectiveProjectionMatrix(30.0, screensize[0] / screensize[1], 0.5, 5.0)
         #projectionMatrix = matrix.Matrix.matIdent()
         #print "projection matrix\n{}".format(projectionMatrix)

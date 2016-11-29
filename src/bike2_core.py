@@ -779,7 +779,7 @@ class LevelManager(object):
     def __init__(self):
         self.gravity = vector.Vector(0.0, -140, 0.0)    # Gravity: set it and forget it
         self.currentLevel = 0
-        self.levelFinished = False
+        self.levelPassed = False
         self.finalLevel = 6     # TODO find a better way to Initialize final level. Right now, it's hardcoded. Maybe we can put level data in a file
         self.curRamp = 0
         self.trackHalfWidth = 25.0   # Track width is 2 * this number
@@ -805,7 +805,7 @@ class LevelManager(object):
         del self.ramps[:]
 
         Scale = 120         	    # Scale is used in Rotate functions. May need to substitute a camera class?
-        self.levelFinished = False  # self.levelFinished belongs in a game stats class or a level manager
+        self.levelPassed = False    # self.levelPassed belongs in a game stats class or a level manager
         self.curRamp = 0         	# The current ramp in the level (this probably won't be necessary once we have legit collision detection
         #NumTricks = 0       	    # Tracks how many tricks the player has performed (belongs in game stats class) # TODO probably delete this line
         #TrickCounter = 0    	    # Hmm, not sure how this differs from NumTricks. TODO read the code             # TODO probably delete this line
