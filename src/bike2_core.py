@@ -743,7 +743,7 @@ class Bike(GameObj):
                 self.gamestatsRef.runReport.append(self.gamestatsRef.trickMsg)
                 self.gamestatsRef.activeTrick = 0
 
-                #self.mmRef.setMessage(self.gamestatsRef.trickMsg, [ 400, 300 ], (192, 64, 64), 5 )  # TODO reinstate this message. It should be triggered when you land a trick, then expire after a few seconds
+                self.mmRef.setMessage(self.gamestatsRef.trickMsg, [ 400, 300 + self.gamestatsRef.numTricks * 14 ], (192, 64, 64), 3 )  # TODO reinstate this message. It should be triggered when you land a trick, then expire after a few seconds
         
 ##Initial trick point values. TODO put this into a class maybe?
 ##TrickPointData:

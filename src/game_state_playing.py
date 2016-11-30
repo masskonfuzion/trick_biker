@@ -448,7 +448,7 @@ class GameStateImpl(GameStateBase):
             # Display level start message
             self.levelMgr.levelPassed = False
             self.levelMgr.InitLevel()
-            self.mm.setMessage("Level {}!".format(self.levelMgr.currentLevel), [ 400, 300 ], (192, 64, 64), 5 )  # TODO un-hardcode the render position of the message. But otherwise, use this as a template to replace other message and doMessage calls
+            self.mm.setMessage("Level {}!".format(self.levelMgr.currentLevel), [ 400, 200 ], (192, 64, 64), 2 )  # TODO un-hardcode the render position of the message. But otherwise, use this as a template to replace other message and doMessage calls
             self.gamestats.reset()
 
             # Clear info & presskey messages
@@ -694,6 +694,7 @@ class GameStateImpl(GameStateBase):
 
         self.levelMgr.drawLevel(self.appRef.surface_bg, self.gamestats, matView=composedProjAndView, matViewport=viewportMatrix)
         self.bike.draw(self.appRef.surface_bg, matView=composedProjAndView, matViewport=viewportMatrix)
+        self.mm.draw(self.appRef.surface_bg)
 
         #self.levelMgr.drawLevel(self.appRef.surface_bg, self.gamestats, matView=viewMatrix)
         #self.bike.draw(self.appRef.surface_bg, matView=viewMatrix)
