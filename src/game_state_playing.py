@@ -199,51 +199,6 @@ class GameplayStats(object):
         , "I hope you never become a pilot."
         ]
 
-    #==============================================================================
-    #SUB runSummary
-    #==============================================================================
-    # TODO make the run summary a part of the post-render stuff, e.g., in a substate, perhaps.
-    # TODO hahaaaaa, also uncomment this whole function (runSummary) and implement it
-    ##def runSummary:
-    ##    range = 3
-    ##    flag = 1
-    ##    
-    ##    DO
-    ##        LOCATE 1, 1
-    ##        PRINT STRING$(80, "-")
-    ##        message 2, "Run Summary for Level " + LTRIM$(STR$(self.levelMgr.currentLevel)), 1
-    ##        LOCATE 4, 1: PRINT STRING$(80, "-")
-    ##        message 6, "Biker: " + RiderName$, 1
-    ##        LOCATE 7: PRINT STRING$(80, "-")
-    ##        LOCATE 8, 1
-    ##        FOR n = flag TO flag + range        #self.levelMgr.trickCounter
-    ##            PRINT TAB(3); LTRIM$(STR$(n));
-    ##            PRINT TAB(10); RunReport$(n)
-    ##        NEXT n
-    ##        PRINT
-    ##        PRINT STRING$(80, "-")
-    ##        PRINT TAB(3); "Total: "; TAB(10); LTRIM$(STR$(gamestats.score)); " pts.";
-    ##        PRINT TAB(30); "<I and K> scroll, <Enter> continues."
-    ##        PRINT STRING$(80, "-")
-    ##        
-    ##        message 23, "Press <Enter> to continue.", 1
-    ##        bike.draw()
-    ##        self.levelMgr.drawLevel()
-    ##        PCOPY 1, 0: CLS
-    ##        
-    ##        a$ = INKEY$
-    ##        SELECT CASE UCASE$(a$)
-    ##            CASE "I"
-    ##                flag = flag - 1
-    ##                if flag < 1 : flag = 1
-    ##            CASE "K"
-    ##                flag = flag + 1
-    ##                if flag > self.levelMgr.trickCounter - range : flag = self.levelMgr.trickCounter - range
-    ##            CASE CHR$(13)
-    ##                EXIT SUB
-    ##            END SELECT
-    ##        
-    ##    LOOP
 #==============================================================================
 
 class GameStateImpl(GameStateBase):
@@ -289,6 +244,8 @@ class GameStateImpl(GameStateBase):
 
         self.staticMsg = {}            # a dict to store static DisplayMessage objects ("static" means they appear indefinitely as opposed to DisplayMessageManager messages, which expire after some time)
         self.InitializeStaticMessages()
+
+        self.runSummaryDisplayMsgs = []
 
         self._eventQueue = MessageQueue() # Event queue, e.g. user key/button presses, system events
         self._eventQueue.Initialize(64)
@@ -593,7 +550,29 @@ class GameStateImpl(GameStateBase):
                 if self.levelMgr.levelPassed:
                     self.levelMgr.currentLevel = self.levelMgr.currentLevel + 1
                     self.levelMgr.levelPassed = False   # I think we reset this when we init a new level, but just to be sure, do it here. Then review the code later, and remove extraneous crap.
+
                     self.substate = PlayingSubstate.runsummary
+                    # Create a list of DisplayMsg objects to be displayed in the run summary substate
+                    # (we init here so that the runsummary substate can be concerned only with displaying the
+                    # run summary, and then cleaning up when transitioning out of that substate)
+
+                    headerY = 80   # TODO make the run report compute its size and position itself on screen
+                    msgIndex = 0
+
+                    self.runSummaryDisplayMsgs.append(DisplayMessage())
+                    msgRef = self.runSummaryDisplayMsgs[msgIndex]    # Get a reference to the most recently created DisplayMsg
+                    msgRef.create(txtStr="Tricks that You Pulled Off!! (Ohh yeahhh!)", position=[320, headerY + msgIndex * 12])
+
+                    initialReportY = 100
+                    msgIndex += 1
+                    for msg in self.gamestats.runReport:
+                        self.runSummaryDisplayMsgs.append(DisplayMessage())
+                        msgRef = self.runSummaryDisplayMsgs[msgIndex]
+                        # TODO improve the DisplayMessage interface & constructor to allow more flexibility / better access to data members
+                        msgRef.create(txtStr=msg, position=[320, initialReportY + msgIndex * 12])
+                        msgRef.alive = True # NOTE: No need to set ttl; these messages are static because we'll intentionally not update them.
+                        # TODO seriously, update the DisplayMessage class to allow for static messages -- ttl = -1 or something like that
+                        msgIndex += 1
 
                     if self.levelMgr.currentLevel > self.levelMgr.finalLevel:
                         self.staticMsg['info'].alive = True
@@ -618,13 +597,13 @@ class GameStateImpl(GameStateBase):
                     self.substate = PlayingSubstate.startlevel
                 
         elif self.substate == PlayingSubstate.runsummary:
-            self.staticMsg['info'].alive = True
-            self.staticMsg['info'].changeText("TODO: Run summary goes here :-D")
+            # TODO refactor this code to initialize display obj's before switching into this substate; then, don't keep reassigning alive and text?
             self.staticMsg['presskey'].alive = True
             self.staticMsg['presskey'].changeText("Press <Enter> to return to go to next level")
 
             if self.kbStateMgr.menuActionKeyPressed:
                     self.substate = PlayingSubstate.startlevel
+                    del self.runSummaryDisplayMsgs[:]
 
         elif self.substate == PlayingSubstate.gameover:
             #TODO high scores
@@ -669,9 +648,14 @@ class GameStateImpl(GameStateBase):
         #viewMatrix = matrix.Matrix.matIdent()
         cam_dist = 400 
 
-        camPosition = vector.Vector(self.bike._position[0], self.bike._position[1] + 250, -360)  # Flying camera
-        #camPosition = vector.Vector(self.bike._position[0] - 25, 50, -250)  # Camera on ground
-        viewMatrix = self.refFrame.getLookAtMatrix(camPosition[0], camPosition[1], camPosition[2], self.bike._position[0], self.bike._position[1], self.bike._position[2], 0, 1, 0)  # Camera stays on ground, looks up at bike on jumps
+        # --- 3rd person view from side
+        #camPosition = vector.Vector(self.bike._position[0], self.bike._position[1] + 250, -360)  # Flying camera
+        camPosition = vector.Vector(self.bike._position[0], 0, -250)  # Camera on ground
+        viewMatrix = self.refFrame.getLookAtMatrix(camPosition[0], camPosition[1], camPosition[2], self.bike._position[0], self.bike._position[1], self.bike._position[2], 0, 1, 0)  # Camera looks up at bike on jumps
+
+        # --- First person view
+        #camPosition = vector.Vector(self.bike._position[0], self.bike._position[1] + 15, self.bike._position[2] + 10)
+        #viewMatrix = self.refFrame.getLookAtMatrix(camPosition[0], camPosition[1], camPosition[2], camPosition[0] + 1.0 * math.cos(self.bike.model.thz * DEGTORAD), camPosition[1] + 1.0 * math.sin(self.bike.model.thz * DEGTORAD), camPosition[2] + 10, 0, 1, 0)
         #viewMatrix = matrix.Matrix.matIdent()
         #print "viewMatrix\n{}".format(viewMatrix)
 
@@ -701,6 +685,10 @@ class GameStateImpl(GameStateBase):
 
     def PostRenderScene(self):
         self.drawStatus(self.appRef.surface_bg)    # TODO: Pythonize. status can be an overlay on the game window
+
+        # This is admittedly a janky way to get the run summary in.. But then again, how far from my normal is that, really?
+        if self.substate == PlayingSubstate.runsummary:
+            self.runSummary()
         pygame.display.flip()
 
     #==============================================================================
@@ -952,6 +940,58 @@ class GameStateImpl(GameStateBase):
             self.bike._velocity[0] = self.bike._velocity[0] * coss(self.bike.model.thz)
             self.bike.inAir = True
 
+
+    #==============================================================================
+    #SUB runSummary
+    #==============================================================================
+    # TODO make the run summary a part of the post-render stuff, e.g., in a substate, perhaps.
+    # TODO hahaaaaa, also uncomment this whole function (runSummary) and implement it
+    def runSummary(self):
+    ##    range = 3
+    ##    flag = 1
+    ##    
+    ##    DO
+    ##        LOCATE 1, 1
+    ##        PRINT STRING$(80, "-")
+    ##        message 2, "Run Summary for Level " + LTRIM$(STR$(self.levelMgr.currentLevel)), 1
+    ##        LOCATE 4, 1: PRINT STRING$(80, "-")
+    ##        message 6, "Biker: " + RiderName$, 1
+    ##        LOCATE 7: PRINT STRING$(80, "-")
+    ##        LOCATE 8, 1
+    ##        FOR n = flag TO flag + range        #self.levelMgr.trickCounter
+    ##            PRINT TAB(3); LTRIM$(STR$(n));
+    ##            PRINT TAB(10); RunReport$(n)
+    ##        NEXT n
+    ##        PRINT
+    ##        PRINT STRING$(80, "-")
+    ##        PRINT TAB(3); "Total: "; TAB(10); LTRIM$(STR$(gamestats.score)); " pts.";
+    ##        PRINT TAB(30); "<I and K> scroll, <Enter> continues."
+    ##        PRINT STRING$(80, "-")
+    ##        
+    ##        message 23, "Press <Enter> to continue.", 1
+    ##        bike.draw()
+    ##        self.levelMgr.drawLevel()
+    ##        PCOPY 1, 0: CLS
+    ##        
+    ##        a$ = INKEY$
+    ##        SELECT CASE UCASE$(a$)
+    ##            CASE "I"
+    ##                flag = flag - 1
+    ##                if flag < 1 : flag = 1
+    ##            CASE "K"
+    ##                flag = flag + 1
+    ##                if flag > self.levelMgr.trickCounter - range : flag = self.levelMgr.trickCounter - range
+    ##            CASE CHR$(13)
+    ##                EXIT SUB
+    ##            END SELECT
+    ##        
+    ##    LOOP
+
+        # TODO at the end of the level, create a list of DisplayMsg objects to display here. Use the messages stored in gamestats.runReport
+        
+        for msg in self.runSummaryDisplayMsgs:
+            textSurfaceScore = msg.getTextSurface(self.mm._font)    # Here we're using the message manager's font
+            self.appRef.surface_bg.blit(textSurfaceScore, (msg._position[0], msg._position[1]))
 
 
 

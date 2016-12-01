@@ -368,7 +368,7 @@ class Bike(GameObj):
 
     def draw(self, screen, matView=matrix.Matrix.matIdent(), matViewport=matrix.Matrix.matIdent()):
         self.model.draw(screen, matView=matView, matViewport=matViewport)
-        self.aabb.draw(screen, matView=matView, matViewport=matViewport)     # For debugging
+        #self.aabb.draw(screen, matView=matView, matViewport=matViewport)     # For debugging
 
 
     #==============================================================================
@@ -468,6 +468,8 @@ class Bike(GameObj):
                 if self.model.thx <= 360 and self.model.thx + rot_vel_x > 360.0:
                     self.tricking = 0
                     self.model.thx = 0
+                    self.model.thy = 0
+                    self.model.thz = 0
                     self.gamestatsRef.trickMsg = "Inverted 180!!!"
             
             elif n == 7:           #Corkscrew (don't try this at home)
