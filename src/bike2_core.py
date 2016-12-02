@@ -234,7 +234,7 @@ class Bike(GameObj):
         super(Bike, self).__init__()
 
         self.model = Wireframe()
-        self.aabb = aabb.AABB()
+        self.aabb = aabb.AABB() # TODO add a hierarchical aabb
         self.colors = []    # a list of ColorType objects, f.k.a. BikeCol (to be set by InitBike())
         self.style = 0      # TODO: consider replacing with a BikeStyle object (right now, style is an int, which dictates which of a predefined set of styles the bike could have)
         self.scale = 1.0

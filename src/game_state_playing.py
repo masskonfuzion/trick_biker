@@ -649,13 +649,26 @@ class GameStateImpl(GameStateBase):
         cam_dist = 400 
 
         # --- 3rd person view from side
-        #camPosition = vector.Vector(self.bike._position[0], self.bike._position[1] + 250, -360)  # Flying camera
+        #camPosition = vector.Vector(self.bike._position[0], self.bike._position[1] + 250, -360)  # Flying camera (Skycam)
         camPosition = vector.Vector(self.bike._position[0], 0, -250)  # Camera on ground
         viewMatrix = self.refFrame.getLookAtMatrix(camPosition[0], camPosition[1], camPosition[2], self.bike._position[0], self.bike._position[1], self.bike._position[2], 0, 1, 0)  # Camera looks up at bike on jumps
 
-        # --- First person view
-        #camPosition = vector.Vector(self.bike._position[0], self.bike._position[1] + 15, self.bike._position[2] + 10)
-        #viewMatrix = self.refFrame.getLookAtMatrix(camPosition[0], camPosition[1], camPosition[2], camPosition[0] + 1.0 * math.cos(self.bike.model.thz * DEGTORAD), camPosition[1] + 1.0 * math.sin(self.bike.model.thz * DEGTORAD), camPosition[2] + 10, 0, 1, 0)
+        ## --- First person view NOTE: Doesn't work, because I'm not clipping. Also, I think I need the composed transformation matrix for the bike frame, not just the bike's overall deally
+        #camOffset = vector.Vector(-30, 25, 10)
+        #lookVector = vector.Vector(1000,0,-10)
+
+        #bikeTransform = matrix.mMultmat(matrix.Matrix.matRotY(self.bike.model.thy), matrix.Matrix.matRotX(self.bike.model.thx))# TODO this should probably be a member fn of Wireframe -- to get the transform
+        #bikeTransform = matrix.mMultmat(matrix.Matrix.matRotZ(self.bike.model.thz), bikeTransform)
+
+        #camPosition = matrix.mMultvec(bikeTransform, camOffset)
+        #camPosition = vector.vAdd(self.bike._position, camPosition)
+
+        #lookPoint = matrix.mMultvec(bikeTransform, lookVector)
+        #lookPoint = vector.vAdd(camPosition, lookPoint)
+
+        #print "camPosition:{}, lookPoint:{}".format(camPosition, lookPoint)
+        #viewMatrix = self.refFrame.getLookAtMatrix(camPosition[0], camPosition[1], camPosition[2], lookPoint[0], lookPoint[1], lookPoint[2], 0, 1, 0)
+
         #viewMatrix = matrix.Matrix.matIdent()
         #print "viewMatrix\n{}".format(viewMatrix)
 
@@ -944,67 +957,10 @@ class GameStateImpl(GameStateBase):
     #==============================================================================
     #SUB runSummary
     #==============================================================================
-    # TODO make the run summary a part of the post-render stuff, e.g., in a substate, perhaps.
-    # TODO hahaaaaa, also uncomment this whole function (runSummary) and implement it
     def runSummary(self):
-    ##    range = 3
-    ##    flag = 1
-    ##    
-    ##    DO
-    ##        LOCATE 1, 1
-    ##        PRINT STRING$(80, "-")
-    ##        message 2, "Run Summary for Level " + LTRIM$(STR$(self.levelMgr.currentLevel)), 1
-    ##        LOCATE 4, 1: PRINT STRING$(80, "-")
-    ##        message 6, "Biker: " + RiderName$, 1
-    ##        LOCATE 7: PRINT STRING$(80, "-")
-    ##        LOCATE 8, 1
-    ##        FOR n = flag TO flag + range        #self.levelMgr.trickCounter
-    ##            PRINT TAB(3); LTRIM$(STR$(n));
-    ##            PRINT TAB(10); RunReport$(n)
-    ##        NEXT n
-    ##        PRINT
-    ##        PRINT STRING$(80, "-")
-    ##        PRINT TAB(3); "Total: "; TAB(10); LTRIM$(STR$(gamestats.score)); " pts.";
-    ##        PRINT TAB(30); "<I and K> scroll, <Enter> continues."
-    ##        PRINT STRING$(80, "-")
-    ##        
-    ##        message 23, "Press <Enter> to continue.", 1
-    ##        bike.draw()
-    ##        self.levelMgr.drawLevel()
-    ##        PCOPY 1, 0: CLS
-    ##        
-    ##        a$ = INKEY$
-    ##        SELECT CASE UCASE$(a$)
-    ##            CASE "I"
-    ##                flag = flag - 1
-    ##                if flag < 1 : flag = 1
-    ##            CASE "K"
-    ##                flag = flag + 1
-    ##                if flag > self.levelMgr.trickCounter - range : flag = self.levelMgr.trickCounter - range
-    ##            CASE CHR$(13)
-    ##                EXIT SUB
-    ##            END SELECT
-    ##        
-    ##    LOOP
-
-        # TODO at the end of the level, create a list of DisplayMsg objects to display here. Use the messages stored in gamestats.runReport
-        
         for msg in self.runSummaryDisplayMsgs:
             textSurfaceScore = msg.getTextSurface(self.mm._font)    # Here we're using the message manager's font
             self.appRef.surface_bg.blit(textSurfaceScore, (msg._position[0], msg._position[1]))
-
-
-
-# TODO replace this level initialization stuff with something else.. In the game playing state, there should be a point at which the game loads a new level, restarts the current level, etc.
-#=-=-=-=-=-=-=-=-=
-
-# NOTE: MainMenu is the main menu. Once the main menu exits, the game begins. In QBASIC, you had put the entire game at level 0 (i.e., it's not in a function or anything).
-
-
-##DO      # TODO pythonize. This is where the game loop starts. Perhaps it should be the PlayingState
-##    AutoDecel()     # TODO replace AutoDecel hackery with proper physics. Should be in bike.update()
-##    
-##LOOP        # TODO pythonize. This is where the game loop ends
 
 
 ###==============================================================================
