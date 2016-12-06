@@ -31,6 +31,12 @@ class Point3D(object):
         self.y = py
         self.z = pz
 
+    def __str__(self):
+        return "[ {}, {}, {} ]".format(self.x, self.y, self.z)
+
+    def __repr__(self):
+        return "Point3D({}, {}, {})".format(self.x, self.y, self.z)
+
     def __getitem__(self, index):
         ## accessor
         # TODO rework this Point3D class. You were taking shortcuts to get a quick demo running. But you should make this class use a list as its underlying data structure; and then write an access that returns an item from the array
@@ -129,6 +135,7 @@ class Wireframe(object):
         self.matTrans = matrix.Matrix()
         self.matRot = matrix.Matrix()
         self.children = {}  # A dict of sub-objects (e.g., bike is a composite obj, containing a frame model and handlebars model
+        self.collisionGeom = None
 
     def addPoint(self, point):
         """ Take in a Point3D object. Append the point object to self.points """
@@ -175,6 +182,10 @@ class Wireframe(object):
             #logging.debug("sPt:{} - {}, ePt:{} - {}".format(startPt, spCoords, endPt, epCoords))
             pygame.draw.line(render_surface, (220, 220, 220), (spCoords[0], spCoords[1]), (epCoords[0], epCoords[1]) )
 
+        if obj_ref.collisionGeom:
+            # TODO add a debug mode.. we don't ALWAYS want to draw the geom
+            obj_ref.collisionGeom.draw(render_surface, matView=matView, matViewport=matViewport)
+
     def updateModelTransform(self, obj_ref=None, composed_xform=matrix.Matrix.matIdent()):
         ''' Update _xpoints based ONLY on the "model" transforms -- translation and rotation
 
@@ -209,6 +220,12 @@ class Wireframe(object):
             #print "{}: point ({}, {}, {}) -> _xpoint ({}, {}, {})".format(obj_ref, point.x, point.y, point.z, p.x, p.y, p.z)
             obj_ref._xpoints.append(Point3D(p.x, p.y, p.z))     # Then convert back to Point3D to comply with the original code for this game (TODO make some synergies between Point3D and Vector)
             # TODO optimize some stuff. Here, you construct Vectors for matrix mult, but then you construct Point3Ds. You do the same thing again in draw().. wasteful
+        obj_ref.collisionGeom.computeBounds(obj_ref)    # TODO give collision geoms ability to recompute bounds without passing in an object all the time? maybe give the geom a reference to the object it's bounding
+
+        # TODO delete thees debugging lines
+        #print "obj_ref id {}: xpoints: {}".format(id(obj_ref), obj_ref._xpoints)
+        #print "AABB id {}: {}".format(id(obj_ref.collisionGeom), obj_ref.collisionGeom)
+        #print "-" * 40
 
     def resetModelTransform(self, obj_ref=None):
         ''' Recursively reset all models' Euler orientation to 0 degrees '''
@@ -234,7 +251,7 @@ class Bike(GameObj):
         super(Bike, self).__init__()
 
         self.model = Wireframe()
-        self.aabb = aabb.AABB() # TODO add a hierarchical aabb
+        self.model.collisionGeom = aabb.AABB()
         self.colors = []    # a list of ColorType objects, f.k.a. BikeCol (to be set by InitBike())
         self.style = 0      # TODO: consider replacing with a BikeStyle object (right now, style is an int, which dictates which of a predefined set of styles the bike could have)
         self.scale = 1.0
@@ -268,35 +285,44 @@ class Bike(GameObj):
         self.model.position = Point3D(0.0, 0.0, 0.0)    # Force a new obj, not simply a ref to self.position (could also write a "copy" function, similar to a copy constructor, but Python doesn't have copy constructors
 
         self.model.children['frame'] = Wireframe()
+        self.model.children['frame'].collisionGeom = aabb.AABB()
+
         #self.model.children['frame'].position = Point3D(-11,0,0) # Displacement from local origin
         for item in raw_bike_model['frame_point_data']:
             pt = Point3D( item[0], item[1], item[2])
             self.model.children['frame'].addPoint(pt)
         # Also copy the line data
+        self.model.children['frame'].collisionGeom.computeBounds(self.model.children['frame'])  # TODO fix the janky function call for the computeBounds calls
         self.model.children['frame'].lines.extend(raw_bike_model['frame_line_data'])  # Could've also used addLine() by iterating through my line data and calling addLine(), one by one
 
         # Now, do the handlebar
         self.model.children['handlebar'] = Wireframe()
+        self.model.children['handlebar'].collisionGeom = aabb.AABB()
         for item in raw_bike_model['handlebar_point_data']:
             pt = Point3D( item[0], item[1], item[2] )
             self.model.children['handlebar'].addPoint(pt)
+        self.model.children['handlebar'].collisionGeom.computeBounds(self.model.children['handlebar'])  # TODO optimize the computeBounds calls, maybe, by taking in a transformation of the already existing computed bounds? (i.e. calculate once, then simply transform the calculated box?)
         self.model.children['handlebar'].lines.extend(raw_bike_model['handlebar_line_data'])
 
         # Rear tire
         self.model.children['frame'].children['wheel'] = Wireframe()
+        self.model.children['frame'].children['wheel'].collisionGeom = aabb.AABB()
         self.model.children['frame'].children['wheel'].position = Point3D(-22,-5,0)
         for item in raw_bike_model['wheel_point_data']:
             pt = Point3D( item[0], item[1], item[2] )
             self.model.children['frame'].children['wheel'].addPoint(pt)
+        self.model.children['frame'].children['wheel'].collisionGeom.computeBounds(self.model.children['frame'].children['wheel'])
         self.model.children['frame'].children['wheel'].lines.extend(raw_bike_model['wheel_line_data'])
 
         # Front tire
         self.model.children['handlebar'].children['wheel'] = Wireframe()
+        self.model.children['handlebar'].children['wheel'].collisionGeom = aabb.AABB()
         self.model.children['handlebar'].children['wheel'].position = Point3D(0,-5,0)
 
         for item in raw_bike_model['wheel_point_data']:
             pt = Point3D( item[0], item[1], item[2] )
             self.model.children['handlebar'].children['wheel'].addPoint(pt)
+        self.model.children['handlebar'].children['wheel'].collisionGeom.computeBounds(self.model.children['handlebar'].children['wheel'])
         self.model.children['handlebar'].children['wheel'].lines.extend(raw_bike_model['wheel_line_data'])
 
         self.model.updateModelTransform()      # This is necessary to compute transformed points, to be able to draw the bike right away
@@ -363,13 +389,10 @@ class Bike(GameObj):
         self._velocity[1] += self._acceleration[1] * dt_s
 
         self.model.updateModelTransform()  # Translate/rotate the bike (NOTE: this is regular ol' motion; for tricking, see updateTrick)
-        self.aabb.computeBounds(self.model) # TODO see aabb module for thoughts on computeBounds() vs update()  # TODO - once we've updated transforms, AABB can simply use _xpoints; remove the _xpoints computation from AABB
         self.updateTrick( self.gamestatsRef.activeTrick, dt_s )    # Make sure updateTrick calls the proper functions to set the bike's transform
 
     def draw(self, screen, matView=matrix.Matrix.matIdent(), matViewport=matrix.Matrix.matIdent()):
         self.model.draw(screen, matView=matView, matViewport=matViewport)
-        #self.aabb.draw(screen, matView=matView, matViewport=matViewport)     # For debugging
-
 
     #==============================================================================
     #SUB DoTrick (n)
@@ -944,3 +967,35 @@ class LevelManager(object):
 
             pygame.draw.line(screen, (192, 192, 192), (launch_end_near_viewport[0], launch_end_near_viewport[1]), (launch_end_far_viewport[0], launch_end_far_viewport[1]))
             pygame.draw.line(screen, (192, 192, 192), (land_end_near_viewport[0], land_end_near_viewport[1]), (land_end_far_viewport[0], land_end_far_viewport[1]))
+
+
+#class AABBTreeNode(object):
+#    ''' A node-based hierarchy of AABBs
+#    '''
+#    #TODO decide whether to put AABBTree into pymkfgame collision code or what.
+#
+#    def __init__(self):
+#        self.modelRef = None    # A reference to a model containing vertices to bound (bind?)
+#                                # NOTE: AABBs in the tree should be able to compute their own extents, based on the geometric information about the model they bound (i.e., vertices and transformations)
+#        self.children = {}
+#
+#    def addChild(self, childName, childRef):
+#        self.children[childName] = childRef
+#        
+#
+## TODO - the goal is to be able to walk a model hierarchy and create AABB nodes for each item in the model. Probably need to use a breadth-first traversal of the model, to be able to properly populate the AABBTree
+#
+#
+#class AABBTree(object):
+#    def __init__(self):
+#        self.nodes = []
+#
+#    def autoBuildTree(self, model):
+#        ''' Automagically build an AABB tree from a given model
+#        '''
+#        # Breadth-first traversal
+#
+#        if model.children:
+#            pass
+
+        

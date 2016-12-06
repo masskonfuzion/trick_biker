@@ -423,7 +423,7 @@ class GameStateImpl(GameStateBase):
             if self.bike.inAir:
                 # This is rudimentary "collision detection" (more like a boundary test) for determining when the bike lands (self.levelMgr.y_ground is ground level)
 
-                if self.bike._velocity[1] < 0 and self.bike.aabb._minPt[1] <= self.levelMgr.y_ground:  # TODO make sure that biker's yvel is 0 when on the ground; otherwise this test will trigger false positives
+                if self.bike._velocity[1] < 0 and self.bike.model.collisionGeom._minPt[1] <= self.levelMgr.y_ground:  # TODO make sure that biker's yvel is 0 when on the ground; otherwise this test will trigger false positives
                     # If you're here, you've landed
                     self.bike._position[1] = self.levelMgr.y_ground# - 30
                     self.bike._velocity[1] = 0.0
@@ -446,7 +446,7 @@ class GameStateImpl(GameStateBase):
                     land_sx = land_ex + ramp_length
                     land_sy = self.levelMgr.ramps[self.levelMgr.curRamp].y
 
-                    DidNotClearRamp = self.bike.aabb._minPt[0] < land_ex    # You didn't clear the jump if you land before the lip of the landing ramp # TODO make the landing calculation more robust. Should be able to land on the ramp
+                    DidNotClearRamp = self.bike.model.collisionGeom._minPt[0] < land_ex    # You didn't clear the jump if you land before the lip of the landing ramp # TODO make the landing calculation more robust. Should be able to land on the ramp
             
                     #import pdb; pdb.set_trace()
                     if self.bike.tricking or DidNotClearRamp :
@@ -939,7 +939,7 @@ class GameStateImpl(GameStateBase):
         ex = self.levelMgr.ramps[n].x + self.levelMgr.ramps[n].length * coss(360 - self.levelMgr.ramps[n].incline)
         ey = self.levelMgr.ramps[n].y + self.levelMgr.ramps[n].length * sinn(360 - self.levelMgr.ramps[n].incline)
     
-        if self.bike.aabb._maxPt[0] > sx: # remember, _maxPts is a tuple, with no .x, .y, or .z attributes
+        if self.bike.model.collisionGeom._maxPt[0] > sx: # remember, _maxPts is a tuple, with no .x, .y, or .z attributes
             #import pdb; pdb.set_trace()
             #self.bike.model.thz = 360 - self.levelMgr.ramps[n].incline # set the top-level rotation angle (which will be processed when we need to know where points are, for drawing/colliding)
     
