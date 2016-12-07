@@ -24,6 +24,34 @@ from pymkfgame.gameobj.gameobj import GameObj
 ##        self.gravity[2] = z;
 
 #==============================================================================
+class AngularVelocity(object):
+    ''' A class to track the angular velocity of the wheels.
+    
+        This is a total hack. In the game, it only considers angular velocity caused by
+        the bike moving along the X-Z plane. In a bigger, better game, we would use rigid body physics.
+    '''
+    def __init__(self, friction=0.05):
+        self.angVel = 0.0
+        self.angle = 0.0
+        self.friction = friction    # A damping factor to slow the wheel's rotation down when it's free-rolling (i.e. not touching the ground)
+        self.radius = 0.0   # NOTE! Make sure to set the radius!
+
+    def setAngVelFromLinearVel(self, linearVel, dt_s=1.0):
+        ''' Compute angular velocity of the wheel, given a linear velocity of the bike. Set this AngularVelocity object's angular velocity
+
+            NOTE: This is not a general solution; it is specific. This function assumes that the bike
+            is traveling along x axis only, and has only 1 component in its velocity vector
+        '''
+        # The angle swept by a point on the circle is ratio of the distance traveled to the circumference of the
+        # circle (I think.. I'm doing this in my head.. I could look it up, but... what fun would that be?
+        # This function also is a super-simplified calculation
+        self.angVel = ( linearVel / (2.0 * math.pi * self.radius) ) * dt_s
+
+    def updateAngle(self):
+        self.angle = (self.angle + self.angVel) % 360.0
+        
+
+#==============================================================================
 class Point3D(object):
     def __init__(self, px=0.0, py=0.0, pz=0.0):
         #self.v = [0.0, 0.0, 0.0] # TODO perhaps use a list, rather than 3 floats.
@@ -222,7 +250,7 @@ class Wireframe(object):
             # TODO optimize some stuff. Here, you construct Vectors for matrix mult, but then you construct Point3Ds. You do the same thing again in draw().. wasteful
         obj_ref.collisionGeom.computeBounds(obj_ref)    # TODO give collision geoms ability to recompute bounds without passing in an object all the time? maybe give the geom a reference to the object it's bounding
 
-        # TODO delete thees debugging lines
+        # TODO delete these debugging lines
         #print "obj_ref id {}: xpoints: {}".format(id(obj_ref), obj_ref._xpoints)
         #print "AABB id {}: {}".format(id(obj_ref.collisionGeom), obj_ref.collisionGeom)
         #print "-" * 40
@@ -247,12 +275,16 @@ class Wireframe(object):
 class Bike(GameObj):
     # NOTE: Remember that GameObj has xyz coords (position), and so does Wireframe. Make sure to keep them synchronized
     # TODO probably break Bike class into its own module
+    # TODO Add a dict of AngularVelocity objs to this object; one for front wheel, one for rear. Use them to update wheel transformations when doing bike.update()
     def __init__(self):
         super(Bike, self).__init__()
 
         self.model = Wireframe()
         self.model.collisionGeom = aabb.AABB()
         self.colors = []    # a list of ColorType objects, f.k.a. BikeCol (to be set by InitBike())
+        self.wheelAngVel = { 'handlebar': AngularVelocity()
+                           , 'frame': AngularVelocity()
+                           }
         self.style = 0      # TODO: consider replacing with a BikeStyle object (right now, style is an int, which dictates which of a predefined set of styles the bike could have)
         self.scale = 1.0
         #self.position = Point3D()   # Note that we're using Point3D for bike's position, even though GameObj has a position.. Revisit this     # TODO delete this
@@ -312,6 +344,7 @@ class Bike(GameObj):
             pt = Point3D( item[0], item[1], item[2] )
             self.model.children['frame'].children['wheel'].addPoint(pt)
         self.model.children['frame'].children['wheel'].collisionGeom.computeBounds(self.model.children['frame'].children['wheel'])
+        self.wheelAngVel['frame'].radius = (self.model.children['frame'].children['wheel'].collisionGeom._maxPt[0] - self.model.children['frame'].children['wheel'].collisionGeom._minPt[0]) / 2.0
         self.model.children['frame'].children['wheel'].lines.extend(raw_bike_model['wheel_line_data'])
 
         # Front tire
@@ -323,6 +356,7 @@ class Bike(GameObj):
             pt = Point3D( item[0], item[1], item[2] )
             self.model.children['handlebar'].children['wheel'].addPoint(pt)
         self.model.children['handlebar'].children['wheel'].collisionGeom.computeBounds(self.model.children['handlebar'].children['wheel'])
+        self.wheelAngVel['handlebar'].radius = (self.model.children['handlebar'].children['wheel'].collisionGeom._maxPt[0] - self.model.children['frame'].children['wheel'].collisionGeom._minPt[0]) / 2.0
         self.model.children['handlebar'].children['wheel'].lines.extend(raw_bike_model['wheel_line_data'])
 
         self.model.updateModelTransform()      # This is necessary to compute transformed points, to be able to draw the bike right away
@@ -387,6 +421,13 @@ class Bike(GameObj):
 
         self._velocity[0] += self._acceleration[0] * dt_s
         self._velocity[1] += self._acceleration[1] * dt_s
+
+        # Compute wheel angular velocity from linear velocity (note that linear velocity is already time-scaled, so we don't have to also time-scale the angular velocities
+        if self.model.children['handlebar'].children['wheel'].collisionGeom._minPt[1] <= self.levelMgrRef.y_ground:
+            self.wheelAngVel['handlebar'].setAngVelFromLinearVel(self._velocity[0])  # Set angular velocity
+            self.wheelAngVel['handlebar'].updateAngle()                             # Update angle based on angular velocity
+        else:
+            pass    # TODO let the wheel free-wheel; use friction?
 
         self.model.updateModelTransform()  # Translate/rotate the bike (NOTE: this is regular ol' motion; for tricking, see updateTrick)
         self.updateTrick( self.gamestatsRef.activeTrick, dt_s )    # Make sure updateTrick calls the proper functions to set the bike's transform
