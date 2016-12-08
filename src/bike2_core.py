@@ -30,25 +30,32 @@ class AngularVelocity(object):
         This is a total hack. In the game, it only considers angular velocity caused by
         the bike moving along the X-Z plane. In a bigger, better game, we would use rigid body physics.
     '''
-    def __init__(self, friction=0.05):
+    def __init__(self, friction=0.01):
         self.angVel = 0.0
         self.angle = 0.0
         self.friction = friction    # A damping factor to slow the wheel's rotation down when it's free-rolling (i.e. not touching the ground)
         self.radius = 0.0   # NOTE! Make sure to set the radius!
 
-    def setAngVelFromLinearVel(self, linearVel, dt_s=1.0):
+    def setAngVelFromLinearVel(self, linearVel):
         ''' Compute angular velocity of the wheel, given a linear velocity of the bike. Set this AngularVelocity object's angular velocity
 
             NOTE: This is not a general solution; it is specific. This function assumes that the bike
             is traveling along x axis only, and has only 1 component in its velocity vector
         '''
-        # The angle swept by a point on the circle is ratio of the distance traveled to the circumference of the
+        # The angle swept by a point on the circle is ratio of the distance traveled to the radius of the
         # circle (I think.. I'm doing this in my head.. I could look it up, but... what fun would that be?
-        # This function also is a super-simplified calculation
-        self.angVel = ( linearVel / (2.0 * math.pi * self.radius) ) * dt_s
+        # This function also is a super-simplified calculation; the output is in RADIANS
+        self.angVel =  -linearVel / self.radius
+        #print "angVel:{}, ang_z:{}".format(self.angVel, self.angle)
 
     def updateAngle(self):
-        self.angle = (self.angle + self.angVel) % 360.0
+        self.angle = (self.angle + self.angVel) % (2.0 * math.pi)
+
+    def doFriction(self):
+        self.angVel *= (1.0 - self.friction)
+        if abs(self.angVel) < EPSILON:
+            self.angVel = 0.0
+        #print "angVel:{}, ang_z:{}".format(self.angVel, self.angle)
         
 
 #==============================================================================
@@ -160,8 +167,8 @@ class Wireframe(object):
         self.thx = 0.0  # Euler angles; used for computing rotations
         self.thy = 0.0
         self.thz = 0.0
-        self.matTrans = matrix.Matrix()
-        self.matRot = matrix.Matrix()
+        self.matTrans = matrix.Matrix.matIdent()
+        self.matRot = matrix.Matrix.matIdent()
         self.children = {}  # A dict of sub-objects (e.g., bike is a composite obj, containing a frame model and handlebars model
         self.collisionGeom = None
 
@@ -210,9 +217,28 @@ class Wireframe(object):
             #logging.debug("sPt:{} - {}, ePt:{} - {}".format(startPt, spCoords, endPt, epCoords))
             pygame.draw.line(render_surface, (220, 220, 220), (spCoords[0], spCoords[1]), (epCoords[0], epCoords[1]) )
 
-        if obj_ref.collisionGeom:
-            # TODO add a debug mode.. we don't ALWAYS want to draw the geom
-            obj_ref.collisionGeom.draw(render_surface, matView=matView, matViewport=matViewport)
+        #if obj_ref.collisionGeom:
+        #    # TODO add a debug mode.. we don't ALWAYS want to draw the geom
+        #    obj_ref.collisionGeom.draw(render_surface, matView=matView, matViewport=matViewport)
+        #    pass
+
+    def loadModelTransform(self, matRot=matrix.Matrix.matIdent(), matTrans=matrix.Matrix.matIdent()):
+        ''' Load/overwrite a transformation matrix for the object
+
+            NOTE: this function is NOT recursive
+        '''
+        for i in range(0, len(matRot.v)):
+            self.matRot.v[i] = matRot.v[i]  # We're hand-writing a deep copy
+            self.matTrans.v[i] = matTrans.v[i]
+
+
+    def composeModelTransform(self, matRot=matrix.Matrix.matIdent(), matTrans=matrix.Matrix.matIdent()):
+        ''' Compose a transformation matrix for the object
+
+            NOTE: this function is NOT recursive
+        '''
+        self.matRot = matrix.mMultmat( matRot, self.matRot )
+        self.matTrans = matrix.mMultmat( matTrans, self.matTrans )
 
     def updateModelTransform(self, obj_ref=None, composed_xform=matrix.Matrix.matIdent()):
         ''' Update _xpoints based ONLY on the "model" transforms -- translation and rotation
@@ -223,16 +249,19 @@ class Wireframe(object):
         if obj_ref is None:
             obj_ref = self
 
-        obj_ref.matRot = matrix.mMultmat( matrix.Matrix.matRotZ(obj_ref.thz * DEGTORAD), matrix.Matrix.matRotY(obj_ref.thy * DEGTORAD) )
-        obj_ref.matRot = matrix.mMultmat( obj_ref.matRot, matrix.Matrix.matRotX(obj_ref.thx * DEGTORAD) )
-        obj_ref.matTrans = matrix.Matrix.matTrans(obj_ref.position.x, obj_ref.position.y, obj_ref.position.z)
+        matRot = matrix.mMultmat( matrix.Matrix.matRotZ(obj_ref.thz * DEGTORAD), matrix.Matrix.matRotY(obj_ref.thy * DEGTORAD) )
+        matRot = matrix.mMultmat( matRot, matrix.Matrix.matRotX(obj_ref.thx * DEGTORAD) )
+        matTrans = matrix.Matrix.matTrans(obj_ref.position.x, obj_ref.position.y, obj_ref.position.z)
+        
 
         # Note: we postmult trans 1st and rot 2nd because the transform are applied right-to-left. e.g.,
         # M = TRv, where T is translate, R is rot, and v is the vector. R is applied 1st, because it's closest to v
         ##local_composed_xform = matrix.mMultmat(composed_xform, obj_ref.matTrans)
         ##local_composed_xform = matrix.mMultmat(local_composed_xform, obj_ref.matRot)
 
-        local_composed_xform = matrix.mMultmat(composed_xform, obj_ref.matTrans)
+        local_composed_xform = matrix.mMultmat(composed_xform, matTrans)                # Working from outside in, multiply the incoming composed matrix by the newly computed transformation for the object
+        local_composed_xform = matrix.mMultmat(local_composed_xform, matRot)
+        local_composed_xform = matrix.mMultmat(local_composed_xform, obj_ref.matTrans)  # Now, multiply the new-new composed matrix (incoming composed * newly computed) by the currently existing composed matrix
         local_composed_xform = matrix.mMultmat(local_composed_xform, obj_ref.matRot)
 
         #print "Child objects:{}".format(obj_ref.children)
@@ -307,7 +336,6 @@ class Bike(GameObj):
         """
         # TODO clean up Init(). There should be a separate model loading that occurs when the Bike object is created, but not every time the bike is reset (e.g. when it crash-lands)
         dirname = os.path.dirname( sys.argv[0] )
-        #print "dirname:{}".format("/".join((dirname, "../data/bike_model.json")))
         with open(os.path.normpath("/".join((dirname, "../data/bike_model.json"))), 'r') as fd:
             raw_bike_model = json.load(fd)
         #logging.debug("raw_bike_model:{}".format(raw_bike_model))
@@ -319,7 +347,6 @@ class Bike(GameObj):
         self.model.children['frame'] = Wireframe()
         self.model.children['frame'].collisionGeom = aabb.AABB()
 
-        #self.model.children['frame'].position = Point3D(-11,0,0) # Displacement from local origin
         for item in raw_bike_model['frame_point_data']:
             pt = Point3D( item[0], item[1], item[2])
             self.model.children['frame'].addPoint(pt)
@@ -344,7 +371,6 @@ class Bike(GameObj):
             pt = Point3D( item[0], item[1], item[2] )
             self.model.children['frame'].children['wheel'].addPoint(pt)
         self.model.children['frame'].children['wheel'].collisionGeom.computeBounds(self.model.children['frame'].children['wheel'])
-        self.wheelAngVel['frame'].radius = (self.model.children['frame'].children['wheel'].collisionGeom._maxPt[0] - self.model.children['frame'].children['wheel'].collisionGeom._minPt[0]) / 2.0
         self.model.children['frame'].children['wheel'].lines.extend(raw_bike_model['wheel_line_data'])
 
         # Front tire
@@ -356,11 +382,14 @@ class Bike(GameObj):
             pt = Point3D( item[0], item[1], item[2] )
             self.model.children['handlebar'].children['wheel'].addPoint(pt)
         self.model.children['handlebar'].children['wheel'].collisionGeom.computeBounds(self.model.children['handlebar'].children['wheel'])
-        self.wheelAngVel['handlebar'].radius = (self.model.children['handlebar'].children['wheel'].collisionGeom._maxPt[0] - self.model.children['frame'].children['wheel'].collisionGeom._minPt[0]) / 2.0
         self.model.children['handlebar'].children['wheel'].lines.extend(raw_bike_model['wheel_line_data'])
 
         self.model.updateModelTransform()      # This is necessary to compute transformed points, to be able to draw the bike right away
 
+        # NOTE: Computation of wheel radius has to happen after updateModelTransform()
+        #import pdb; pdb.set_trace()
+        self.wheelAngVel['handlebar'].radius = (self.model.children['handlebar'].children['wheel'].collisionGeom._maxPt[0] - self.model.children['frame'].children['wheel'].collisionGeom._minPt[0]) / 2.0
+        self.wheelAngVel['frame'].radius = (self.model.children['frame'].children['wheel'].collisionGeom._maxPt[0] - self.model.children['frame'].children['wheel'].collisionGeom._minPt[0]) / 2.0
         # TODO: remove duplicate inits. We have these vars in the constructor for reference; they should be managed outside the constructor
         self.crashed = False
         self.inAir = False
@@ -422,13 +451,27 @@ class Bike(GameObj):
         self._velocity[0] += self._acceleration[0] * dt_s
         self._velocity[1] += self._acceleration[1] * dt_s
 
+        # Load identity matrices for the wheel rotations.
+        self.model.children['handlebar'].children['wheel'].loadModelTransform() # identity is the default for both rot and trans
         # Compute wheel angular velocity from linear velocity (note that linear velocity is already time-scaled, so we don't have to also time-scale the angular velocities
         if self.model.children['handlebar'].children['wheel'].collisionGeom._minPt[1] <= self.levelMgrRef.y_ground:
-            self.wheelAngVel['handlebar'].setAngVelFromLinearVel(self._velocity[0])  # Set angular velocity
-            self.wheelAngVel['handlebar'].updateAngle()                             # Update angle based on angular velocity
+            self.wheelAngVel['handlebar'].setAngVelFromLinearVel(self._velocity[0] * dt_s)  # Set angular velocity
         else:
-            pass    # TODO let the wheel free-wheel; use friction?
+            self.wheelAngVel['handlebar'].doFriction()
+        self.wheelAngVel['handlebar'].updateAngle()                             # Update angle based on angular velocity
+        wheelRotMat = matrix.Matrix.matRotZ( self.wheelAngVel['handlebar'].angle )
+        self.model.children['handlebar'].children['wheel'].composeModelTransform(matRot=wheelRotMat)
 
+        self.model.children['frame'].children['wheel'].loadModelTransform() # identity is the default for both rot and trans
+        if self.model.children['frame'].children['wheel'].collisionGeom._minPt[1] <= self.levelMgrRef.y_ground:
+            self.wheelAngVel['frame'].setAngVelFromLinearVel(self._velocity[0] * dt_s)  # Set angular velocity
+        else:
+            self.wheelAngVel['frame'].doFriction()
+        self.wheelAngVel['frame'].updateAngle()                             # Update angle based on angular velocity
+        wheelRotMat = matrix.Matrix.matRotZ( self.wheelAngVel['frame'].angle )
+        self.model.children['frame'].children['wheel'].composeModelTransform(matRot=wheelRotMat)
+
+        # Now, update the model transforms and such based on linear velocity of the bike, and gravity, and whatever tricking is going on
         self.model.updateModelTransform()  # Translate/rotate the bike (NOTE: this is regular ol' motion; for tricking, see updateTrick)
         self.updateTrick( self.gamestatsRef.activeTrick, dt_s )    # Make sure updateTrick calls the proper functions to set the bike's transform
 
