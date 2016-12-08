@@ -351,7 +351,6 @@ class Bike(GameObj):
             pt = Point3D( item[0], item[1], item[2])
             self.model.children['frame'].addPoint(pt)
         # Also copy the line data
-        self.model.children['frame'].collisionGeom.computeBounds(self.model.children['frame'])  # TODO fix the janky function call for the computeBounds calls
         self.model.children['frame'].lines.extend(raw_bike_model['frame_line_data'])  # Could've also used addLine() by iterating through my line data and calling addLine(), one by one
 
         # Now, do the handlebar
@@ -360,7 +359,6 @@ class Bike(GameObj):
         for item in raw_bike_model['handlebar_point_data']:
             pt = Point3D( item[0], item[1], item[2] )
             self.model.children['handlebar'].addPoint(pt)
-        self.model.children['handlebar'].collisionGeom.computeBounds(self.model.children['handlebar'])  # TODO optimize the computeBounds calls, maybe, by taking in a transformation of the already existing computed bounds? (i.e. calculate once, then simply transform the calculated box?)
         self.model.children['handlebar'].lines.extend(raw_bike_model['handlebar_line_data'])
 
         # Rear tire
@@ -370,7 +368,6 @@ class Bike(GameObj):
         for item in raw_bike_model['wheel_point_data']:
             pt = Point3D( item[0], item[1], item[2] )
             self.model.children['frame'].children['wheel'].addPoint(pt)
-        self.model.children['frame'].children['wheel'].collisionGeom.computeBounds(self.model.children['frame'].children['wheel'])
         self.model.children['frame'].children['wheel'].lines.extend(raw_bike_model['wheel_line_data'])
 
         # Front tire
@@ -381,15 +378,28 @@ class Bike(GameObj):
         for item in raw_bike_model['wheel_point_data']:
             pt = Point3D( item[0], item[1], item[2] )
             self.model.children['handlebar'].children['wheel'].addPoint(pt)
-        self.model.children['handlebar'].children['wheel'].collisionGeom.computeBounds(self.model.children['handlebar'].children['wheel'])
         self.model.children['handlebar'].children['wheel'].lines.extend(raw_bike_model['wheel_line_data'])
 
         self.model.updateModelTransform()      # This is necessary to compute transformed points, to be able to draw the bike right away
 
-        # NOTE: Computation of wheel radius has to happen after updateModelTransform()
+        # Now that the model is 'transformed' and the _xpoints arrays are populated, compute the collision geom boundaries
+        self.model.children['frame'].collisionGeom.computeBounds(self.model.children['frame'])  # TODO fix the janky function prototype for the computeBounds calls
+        self.model.children['frame'].children['wheel'].collisionGeom.computeBounds(self.model.children['frame'].children['wheel'])
+        self.model.children['handlebar'].collisionGeom.computeBounds(self.model.children['handlebar'])  # TODO optimize the computeBounds calls, maybe, by taking in a transformation of the already existing computed bounds? (i.e. calculate once, then simply transform the calculated box?)
+        self.model.children['handlebar'].children['wheel'].collisionGeom.computeBounds(self.model.children['handlebar'].children['wheel'])
+
+        # Calculate the wheel radius, to be used for angular velocity calculation
+        dimension_min = sys.maxint - 1
+        dimension_max = -sys.maxint + 1
+
+        for point in raw_bike_model['wheel_point_data']:    # NOTE you could do this loop above, when loading model, but separating it out here makes it clearer that we're simply calculating the wheel's radius
+            dimension_min = min(dimension_min, point[0])
+            dimension_max = max(dimension_max, point[0])
+
         #import pdb; pdb.set_trace()
-        self.wheelAngVel['handlebar'].radius = (self.model.children['handlebar'].children['wheel'].collisionGeom._maxPt[0] - self.model.children['frame'].children['wheel'].collisionGeom._minPt[0]) / 2.0
-        self.wheelAngVel['frame'].radius = (self.model.children['frame'].children['wheel'].collisionGeom._maxPt[0] - self.model.children['frame'].children['wheel'].collisionGeom._minPt[0]) / 2.0
+        self.wheelAngVel['handlebar'].radius = (dimension_max - dimension_min)# / 2.0    # NOTE that this radius need not be accurate - it's used only to compute the wheels' behavior
+        self.wheelAngVel['frame'].radius = (dimension_max - dimension_min)# / 2.0
+
         # TODO: remove duplicate inits. We have these vars in the constructor for reference; they should be managed outside the constructor
         self.crashed = False
         self.inAir = False
