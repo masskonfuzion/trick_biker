@@ -12,17 +12,6 @@ from pymkfgame.mkfmath.common import DEGTORAD, coss, sinn, EPSILON, floatEq
 from pymkfgame.collision import aabb
 from pymkfgame.gameobj.gameobj import GameObj
 
-###==============================================================================
-##class World(object):
-##    ''' A "world" class for physics. '''
-##    def __init__(self):
-##        self.gravity = Vector()
-##
-##    def setGravity(self, x, y, z):
-##        self.gravity[0] = x;
-##        self.gravity[1] = y;
-##        self.gravity[2] = z;
-
 #==============================================================================
 class AngularVelocity(object):
     ''' A class to track the angular velocity of the wheels.
@@ -171,6 +160,7 @@ class Wireframe(object):
         self.matRot = matrix.Matrix.matIdent()
         self.children = {}  # A dict of sub-objects (e.g., bike is a composite obj, containing a frame model and handlebars model
         self.collisionGeom = None
+        self.colors = {}    # A dict of color names, and color lists (or tuples?)
 
     def addPoint(self, point):
         """ Take in a Point3D object. Append the point object to self.points """
@@ -206,8 +196,17 @@ class Wireframe(object):
             #print "modelview: ({:3f}, {:3f}, {:3f}, {:3f}) -> viewport: ({:3f}, {:3f}, {:3f}, {:3f})".format(p.x, p.y, p.z, p.w, vp.x, vp.y, vp.z, vp.w)
             
         for lineData in obj_ref.lines:
-            startPt = lineData[0] - 1   # subtract 1 because we programmed this game in QBASIC with base = 1, not 0
-            endPt = lineData[1] - 1
+            # get the points
+            startPt = lineData["indices"][0] - 1   # subtract 1 because we programmed this game in QBASIC with base = 1, not 0
+            endPt = lineData["indices"][1] - 1
+
+            # Get the colors
+            # TODO add error checking with model colors here?
+            colorDef = lineData.get('color', '')    # The color definition in the model data is a string; either the name of a color (defined in the model), or an alias, which can be loaded at runtime
+            if colorDef.find("{{") > -1:  # find() returns -1 if the substring is not found
+                # We assume that if "{{" is in the string ,then so is "}}"
+                colorKeyName = colorDef.strip("{").strip("}")
+                color = obj_ref.colors[colorKeyName]   # TODO make a default case for color?
 
             #import pdb; pdb.set_trace()
 
@@ -215,7 +214,7 @@ class Wireframe(object):
             spCoords = xpoints_viewport[startPt]
             epCoords = xpoints_viewport[endPt]
             #logging.debug("sPt:{} - {}, ePt:{} - {}".format(startPt, spCoords, endPt, epCoords))
-            pygame.draw.line(render_surface, (220, 220, 220), (spCoords[0], spCoords[1]), (epCoords[0], epCoords[1]) )
+            pygame.draw.line(render_surface, color, (spCoords[0], spCoords[1]), (epCoords[0], epCoords[1]) )
 
         #if obj_ref.collisionGeom:
         #    # TODO add a debug mode.. we don't ALWAYS want to draw the geom
@@ -253,12 +252,6 @@ class Wireframe(object):
         matRot = matrix.mMultmat( matRot, matrix.Matrix.matRotX(obj_ref.thx * DEGTORAD) )
         matTrans = matrix.Matrix.matTrans(obj_ref.position.x, obj_ref.position.y, obj_ref.position.z)
         
-
-        # Note: we postmult trans 1st and rot 2nd because the transform are applied right-to-left. e.g.,
-        # M = TRv, where T is translate, R is rot, and v is the vector. R is applied 1st, because it's closest to v
-        ##local_composed_xform = matrix.mMultmat(composed_xform, obj_ref.matTrans)
-        ##local_composed_xform = matrix.mMultmat(local_composed_xform, obj_ref.matRot)
-
         local_composed_xform = matrix.mMultmat(composed_xform, matTrans)                # Working from outside in, multiply the incoming composed matrix by the newly computed transformation for the object
         local_composed_xform = matrix.mMultmat(local_composed_xform, matRot)
         local_composed_xform = matrix.mMultmat(local_composed_xform, obj_ref.matTrans)  # Now, multiply the new-new composed matrix (incoming composed * newly computed) by the currently existing composed matrix
@@ -316,8 +309,6 @@ class Bike(GameObj):
                            }
         self.style = 0      # TODO: consider replacing with a BikeStyle object (right now, style is an int, which dictates which of a predefined set of styles the bike could have)
         self.scale = 1.0
-        #self.position = Point3D()   # Note that we're using Point3D for bike's position, even though GameObj has a position.. Revisit this     # TODO delete this
-        #self.velocity = vector.Vector()  # TODO note that Bike is a gameobj, which has _position, _velocity, and _acceleration. Here you're defining a new position, and all that.
         self.gamestatsRef = None    # A reference to the game engine's gamestats object
         self.mmRef = None           # A reference to the game engine's message manager
         self.levelMgrRef = None     # A reference to the game engine's level manager (We can probably do better than assigning all of these references. Maybe give a reference to the game engine itself, and one to the gamestate)
@@ -352,6 +343,7 @@ class Bike(GameObj):
             self.model.children['frame'].addPoint(pt)
         # Also copy the line data
         self.model.children['frame'].lines.extend(raw_bike_model['frame_line_data'])  # Could've also used addLine() by iterating through my line data and calling addLine(), one by one
+        self.model.children['frame'].colors['frame_color'] = (0, 64, 128)   # NOTE/TODO load colors as part of character select
 
         # Now, do the handlebar
         self.model.children['handlebar'] = Wireframe()
@@ -360,6 +352,7 @@ class Bike(GameObj):
             pt = Point3D( item[0], item[1], item[2] )
             self.model.children['handlebar'].addPoint(pt)
         self.model.children['handlebar'].lines.extend(raw_bike_model['handlebar_line_data'])
+        self.model.children['handlebar'].colors['handlebar_color'] = (0, 128, 255)   # NOTE/TODO load colors as part of character select
 
         # Rear tire
         self.model.children['frame'].children['wheel'] = Wireframe()
@@ -369,6 +362,8 @@ class Bike(GameObj):
             pt = Point3D( item[0], item[1], item[2] )
             self.model.children['frame'].children['wheel'].addPoint(pt)
         self.model.children['frame'].children['wheel'].lines.extend(raw_bike_model['wheel_line_data'])
+        self.model.children['frame'].children['wheel'].colors['wheel_color'] = (64, 64, 64)   # NOTE/TODO load colors as part of character select
+        self.model.children['frame'].children['wheel'].colors['spoke_color'] = (224, 224, 12)   # NOTE/TODO load colors as part of character select
 
         # Front tire
         self.model.children['handlebar'].children['wheel'] = Wireframe()
@@ -379,6 +374,8 @@ class Bike(GameObj):
             pt = Point3D( item[0], item[1], item[2] )
             self.model.children['handlebar'].children['wheel'].addPoint(pt)
         self.model.children['handlebar'].children['wheel'].lines.extend(raw_bike_model['wheel_line_data'])
+        self.model.children['handlebar'].children['wheel'].colors['wheel_color'] = (64, 64, 64)   # NOTE/TODO load colors as part of character select
+        self.model.children['handlebar'].children['wheel'].colors['spoke_color'] = (242, 12, 224)   # NOTE/TODO load colors as part of character select
 
         self.model.updateModelTransform()      # This is necessary to compute transformed points, to be able to draw the bike right away
 
@@ -406,6 +403,7 @@ class Bike(GameObj):
         self.tricking = False
         self.trickPhase = 1
 
+        
         ##TODO finish converting the commented-out code to either be in a bike member function, or otherwise wherever it belongs
         ###BikeStyle = 5
         ##
@@ -480,6 +478,8 @@ class Bike(GameObj):
         self.wheelAngVel['frame'].updateAngle()                             # Update angle based on angular velocity
         wheelRotMat = matrix.Matrix.matRotZ( self.wheelAngVel['frame'].angle )
         self.model.children['frame'].children['wheel'].composeModelTransform(matRot=wheelRotMat)
+
+        #print "vel_l = {}; vel_ang = {} RAD, {} DEG".format(self._velocity[0], self.wheelAngVel['handlebar'].angVel, self.wheelAngVel['handlebar'].angVel * 180.0 / math.pi)
 
         # Now, update the model transforms and such based on linear velocity of the bike, and gravity, and whatever tricking is going on
         self.model.updateModelTransform()  # Translate/rotate the bike (NOTE: this is regular ol' motion; for tricking, see updateTrick)
@@ -835,19 +835,6 @@ class Bike(GameObj):
                         self.gamestatsRef.trickMsg = "Flair!!!"
 
         else:   # not tricking:
-            # NOTE the following code was in this location in the QBASIC game, because all the variables were global. But in the Python version, this stuff probably belongs in the playing state code, so we copied it
-            # there. You can probably delete the commented-out code here
-            # TODO QBASIC was 1-based; Make sure all your list indices and what not have the correct number base (case in point: self.gamestatsRef.addscore
-            #self.gamestatsRef.addScore = int(self.gamestatsRef.addScore + self.gamestatsRef.trickPointValue[self.gamestatsRef.activeTrick - 1] - ((self.gamestatsRef.factor * self.gamestatsRef.timesUsed[self.gamestatsRef.activeTrick - 1]) * self.gamestatsRef.trickPointValue[self.gamestatsRef.activeTrick - 1]))  # in QBASIC, tricks were base 1, but now we're using base 0
-            #if self.gamestatsRef.addScore <= 0:
-            #    self.gamestatsRef.addScore = 1
-            #self.gamestatsRef.timesUsed[self.gamestatsRef.activeTrick - 1] += 1 # TODO rearrange trick tracking to be a class; e.g. trick1.timesUsed, trick1.originalPointTotal, etc.
-            #self.gamestatsRef.trickMsg = self.gamestatsRef.trickMsg + " - " + str(self.gamestatsRef.addScore) + " pts. "   # Note: we could use better Python string processing here.. we're just duplicating the QBASIC way
-            #if self.gamestatsRef.numTricks > 1:
-            #    self.gamestatsRef.trickMsg = self.gamestatsRef.trickMsg + " " + str(self.gamestatsRef.numTricks) + " TRICK COMBO!!!"
-            #self.gamestatsRef.runReport.append(self.gamestatsRef.trickMsg)
-            #self.gamestatsRef.activeTrick = 0   # NOTE: it's necessary to set activeTrick to 0 here... but why?
-
             if self.gamestatsRef.activeTrick > 0:
                 #import pdb; pdb.set_trace()
                 # NOTE: Addscore is used to add up all the scores of all tricks being performed as part of a combo
@@ -864,26 +851,6 @@ class Bike(GameObj):
 
                 self.mmRef.setMessage(self.gamestatsRef.trickMsg, [ 400, 300 + self.gamestatsRef.numTricks * 14 ], (192, 64, 64), 3 )  # TODO reinstate this message. It should be triggered when you land a trick, then expire after a few seconds
         
-##Initial trick point values. TODO put this into a class maybe?
-##TrickPointData:
-##DATA 16       : #Total # of tricks
-##DATA 100      : #Point worth of trick 1
-##DATA 150      : #Point worth of trick 2
-##DATA 125
-##DATA 150
-##DATA 250
-##DATA 350
-##DATA 200
-##DATA 175
-##DATA 200
-##DATA 300
-##DATA 330
-##DATA 375
-##DATA 75
-##DATA 200
-##DATA 100
-##DATA 275
-
         #TODO: Delete SloMo?
         #if SloMo:
         #    FOR l = 1 TO 50
@@ -919,15 +886,12 @@ class LevelManager(object):
         # TODO perhaps move levels into text files? Or perhaps into a separate module?
         # TODO convert to file i/o. Score-to-beat stuff should belong in a level object, perhaps
         # TODO also, watch out for QBASIC 1-based stuff.. you were an amateur when you made this
-        # TODO also, convert InitLevel to Python
 
         del self.ramps[:]
 
         Scale = 120         	    # Scale is used in Rotate functions. May need to substitute a camera class?
         self.levelPassed = False    # self.levelPassed belongs in a game stats class or a level manager
         self.curRamp = 0         	# The current ramp in the level (this probably won't be necessary once we have legit collision detection
-        #NumTricks = 0       	    # Tracks how many tricks the player has performed (belongs in game stats class) # TODO probably delete this line
-        #TrickCounter = 0    	    # Hmm, not sure how this differs from NumTricks. TODO read the code             # TODO probably delete this line
         self.trickCounter = 0
         MsgFrames = 0       	    # Used in messaging (how many frames to leave the message up for)
         msg = ""           		    # Used in messaging - the message text itself
@@ -1062,34 +1026,3 @@ class LevelManager(object):
             pygame.draw.line(screen, (192, 192, 192), (launch_end_near_viewport[0], launch_end_near_viewport[1]), (launch_end_far_viewport[0], launch_end_far_viewport[1]))
             pygame.draw.line(screen, (192, 192, 192), (land_end_near_viewport[0], land_end_near_viewport[1]), (land_end_far_viewport[0], land_end_far_viewport[1]))
 
-
-#class AABBTreeNode(object):
-#    ''' A node-based hierarchy of AABBs
-#    '''
-#    #TODO decide whether to put AABBTree into pymkfgame collision code or what.
-#
-#    def __init__(self):
-#        self.modelRef = None    # A reference to a model containing vertices to bound (bind?)
-#                                # NOTE: AABBs in the tree should be able to compute their own extents, based on the geometric information about the model they bound (i.e., vertices and transformations)
-#        self.children = {}
-#
-#    def addChild(self, childName, childRef):
-#        self.children[childName] = childRef
-#        
-#
-## TODO - the goal is to be able to walk a model hierarchy and create AABB nodes for each item in the model. Probably need to use a breadth-first traversal of the model, to be able to properly populate the AABBTree
-#
-#
-#class AABBTree(object):
-#    def __init__(self):
-#        self.nodes = []
-#
-#    def autoBuildTree(self, model):
-#        ''' Automagically build an AABB tree from a given model
-#        '''
-#        # Breadth-first traversal
-#
-#        if model.children:
-#            pass
-
-        

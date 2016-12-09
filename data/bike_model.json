@@ -24,27 +24,27 @@
     ]
 ,    "frame_line_data":
     [
-        [2,17]
-    ,   [17,16]
-    ,   [17,15]
-    ,   [16,13]
-    ,   [15,14]
-    ,   [4,6]
-    ,   [4,5]
-    ,   [4,2]
-    ,   [13,14]
-    ,   [2,6]
-    ,   [4,18]
-    ,   [18,19]
-    ,   [18,20]
-    ,   [20,13]
-    ,   [19,14]
-    ,   [2,6]
-    ,   [7,10]
-    ,   [8,9]
-    ,   [11,12]
-    ,   [7,8]
-    ,   [9,10]
+        { "indices": [2,17]     , "color": "{{frame_color}}" }
+    ,   { "indices": [17,16]    , "color": "{{frame_color}}" }
+    ,   { "indices": [17,15]    , "color": "{{frame_color}}" }
+    ,   { "indices": [16,13]    , "color": "{{frame_color}}" }
+    ,   { "indices": [15,14]    , "color": "{{frame_color}}" }
+    ,   { "indices": [4,6]      , "color": "{{frame_color}}" }
+    ,   { "indices": [4,5]      , "color": "{{frame_color}}" }
+    ,   { "indices": [4,2]      , "color": "{{frame_color}}" }
+    ,   { "indices": [13,14]    , "color": "{{frame_color}}" }
+    ,   { "indices": [2,6]      , "color": "{{frame_color}}" }
+    ,   { "indices": [4,18]     , "color": "{{frame_color}}" }
+    ,   { "indices": [18,19]    , "color": "{{frame_color}}" }
+    ,   { "indices": [18,20]    , "color": "{{frame_color}}" }
+    ,   { "indices": [20,13]    , "color": "{{frame_color}}" }
+    ,   { "indices": [19,14]    , "color": "{{frame_color}}" }
+    ,   { "indices": [2,6]      , "color": "{{frame_color}}" }
+    ,   { "indices": [7,10]     , "color": "{{frame_color}}" }
+    ,   { "indices": [8,9]      , "color": "{{frame_color}}" }
+    ,   { "indices": [11,12]    , "color": "{{frame_color}}" }
+    ,   { "indices": [7,8]      , "color": "{{frame_color}}" }
+    ,   { "indices": [9,10]     , "color": "{{frame_color}}" }
     ]
 ,   "wheel_point_data":
     [
@@ -71,35 +71,69 @@
     ]
 ,   "wheel_line_data":
     [
-        [0,10]
-    ,   [5,15]
-    ,   [2,12]
-    ,   [8,18]
+        { "indices": [0,10]     , "color": "{{spoke_color}}" } 
+    ,   { "indices": [5,15]     , "color": "{{spoke_color}}" } 
+    ,   { "indices": [2,12]     , "color": "{{spoke_color}}" } 
+    ,   { "indices": [8,18]     , "color": "{{spoke_color}}" } 
 
-    ,   [0,1]
-    ,   [1,2]
-    ,   [2,3]
-    ,   [3,4]
-    ,   [4,5]
-    ,   [5,6]
-    ,   [6,7]
-    ,   [7,8]
-    ,   [8,9]
-    ,   [9,10]
-    ,   [10,11]
-    ,   [11,12]
-    ,   [12,13]
-    ,   [13,14]
-    ,   [14,15]
-    ,   [15,16]
-    ,   [16,17]
-    ,   [17,18]
-    ,   [18,19]
-    ,   [19,0]
+    ,   { "indices": [0,1]      , "color": "{{wheel_color}}" }
+    ,   { "indices": [1,2]      , "color": "{{wheel_color}}" }
+    ,   { "indices": [2,3]      , "color": "{{wheel_color}}" }
+    ,   { "indices": [3,4]      , "color": "{{wheel_color}}" }
+    ,   { "indices": [4,5]      , "color": "{{wheel_color}}" }
+    ,   { "indices": [5,6]      , "color": "{{wheel_color}}" }
+    ,   { "indices": [6,7]      , "color": "{{wheel_color}}" }
+    ,   { "indices": [7,8]      , "color": "{{wheel_color}}" }
+    ,   { "indices": [8,9]      , "color": "{{wheel_color}}" }
+    ,   { "indices": [9,10]     , "color": "{{wheel_color}}" }
+    ,   { "indices": [10,11]    , "color": "{{wheel_color}}" }
+    ,   { "indices": [11,12]    , "color": "{{wheel_color}}" }
+    ,   { "indices": [12,13]    , "color": "{{wheel_color}}" }
+    ,   { "indices": [13,14]    , "color": "{{wheel_color}}" }
+    ,   { "indices": [14,15]    , "color": "{{wheel_color}}" }
+    ,   { "indices": [15,16]    , "color": "{{wheel_color}}" }
+    ,   { "indices": [16,17]    , "color": "{{wheel_color}}" }
+    ,   { "indices": [17,18]    , "color": "{{wheel_color}}" }
+    ,   { "indices": [18,19]    , "color": "{{wheel_color}}" }
+    ,   { "indices": [19,0]     , "color": "{{wheel_color}}" }
+    ]
+,   "handlebar_point_data":
+    [
+        [0.5,7,0]
+    ,   [0,3,0]
+    ,   [0.5,7,6]
+    ,   [0.5,7,-6]
+    ,   [0,-2,-1]
+    ,   [0,-2,1]
+    ,   [0,-5,-1]
+    ,   [0,-5,1]
+    ,   [0,4,-2]
+    ,   [0,4,2]
+    ,   [0.5,7,-3]
+    ,   [0.5,7,3]
+    ,   [-0,4,0]
+    ]
+,   "handlebar_line_data":
+    [
+        { "indices": [13,2]     , "color": "{{handlebar_color}}" }
+    ,   { "indices": [2,5]      , "color": "{{handlebar_color}}" }
+    ,   { "indices": [2,6]      , "color": "{{handlebar_color}}" }
+    ,   { "indices": [5,7]      , "color": "{{handlebar_color}}" }
+    ,   { "indices": [6,8]      , "color": "{{handlebar_color}}" }
+    ,   { "indices": [7,8]      , "color": "{{handlebar_color}}" }
+    ,   { "indices": [13,9]     , "color": "{{handlebar_color}}" }
+    ,   { "indices": [13,10]    , "color": "{{handlebar_color}}" }
+    ,   { "indices": [10,12]    , "color": "{{handlebar_color}}" }
+    ,   { "indices": [9,11]     , "color": "{{handlebar_color}}" }
+    ,   { "indices": [11,4]     , "color": "{{handlebar_color}}" }
+    ,   { "indices": [12,3]     , "color": "{{handlebar_color}}" }
+    ,   { "indices": [1,12]     , "color": "{{handlebar_color}}" }
+    ,   { "indices": [1,11]     , "color": "{{handlebar_color}}" }
     ]
 ,   "NOT_USED_comments":
     [
         "Why isn't point #0 (frame data) used??"
+    ,   "For colors, if we want to get crazy, we can define a colors section in the model; otherwise, we can let the loaded model override the color defs (which is what we'll do for the Bike game)"
     ]
 ,   "NOT_USED_wheel_drawing_data_based_on_20_cirle_pts_with_index_offset_7":
     [
@@ -127,38 +161,5 @@
     ,   [24,25]
     ,   [25,26]
     ,   [26,7]
-    ]
-,   "handlebar_point_data":
-    [
-        [0.5,7,0]
-    ,   [0,3,0]
-    ,   [0.5,7,6]
-    ,   [0.5,7,-6]
-    ,   [0,-2,-1]
-    ,   [0,-2,1]
-    ,   [0,-5,-1]
-    ,   [0,-5,1]
-    ,   [0,4,-2]
-    ,   [0,4,2]
-    ,   [0.5,7,-3]
-    ,   [0.5,7,3]
-    ,   [-0,4,0]
-    ]
-,   "handlebar_line_data":
-    [
-        [13,2]
-    ,   [2,5]
-    ,   [2,6]
-    ,   [5,7]
-    ,   [6,8]
-    ,   [7,8]
-    ,   [13,9]
-    ,   [13,10]
-    ,   [10,12]
-    ,   [9,11]
-    ,   [11,4]
-    ,   [12,3]
-    ,   [1,12]
-    ,   [1,11]
     ]
 }

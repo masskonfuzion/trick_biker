@@ -311,21 +311,6 @@ class GameStateImpl(GameStateBase):
                                                }
                                   } )
 
-    ##def EnqueuEnterKey(self):
-    ##    """Enqueue a message when the user presses the Enter key to continue
-
-    ##       NOTE: There's actually nothing in this function that enforces that the Enter key triggers the
-    ##       enqueueing of the message. That happens in the game engine's ProcessCommands function
-    ##    """
-    ##    # TODO maybe make a state machine to handle state changes? The idea of this function is to enable the
-    ##    # "press any key to continue" before changing game substates, e.g., from crashed to startlevel
-    ##    self._eventQueue.Enqueue( { 'topic': 'Application',
-    ##                                'payload': { 'action': 'notify'
-    ##                                           , 'function_name': ''
-    ##                                           , 'params' : ''
-    ##                                           }
-    ##                              } )
-
     def ProcessEvents(self):
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
