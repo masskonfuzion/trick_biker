@@ -344,6 +344,7 @@ class Bike(GameObj):
         # Also copy the line data
         self.model.children['frame'].lines.extend(raw_bike_model['frame_line_data'])  # Could've also used addLine() by iterating through my line data and calling addLine(), one by one
         self.model.children['frame'].colors['frame_color'] = (0, 64, 128)   # NOTE/TODO load colors as part of character select
+        self.model.children['frame'].colors['saddle_color'] = (92, 92, 92)   # NOTE/TODO load colors as part of character select
 
         # Now, do the handlebar
         self.model.children['handlebar'] = Wireframe()
@@ -353,6 +354,7 @@ class Bike(GameObj):
             self.model.children['handlebar'].addPoint(pt)
         self.model.children['handlebar'].lines.extend(raw_bike_model['handlebar_line_data'])
         self.model.children['handlebar'].colors['handlebar_color'] = (0, 128, 255)   # NOTE/TODO load colors as part of character select
+        self.model.children['handlebar'].colors['grip_color'] = (198, 198, 18)   # NOTE/TODO load colors as part of character select
 
         # Rear tire
         self.model.children['frame'].children['wheel'] = Wireframe()

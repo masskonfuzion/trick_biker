@@ -40,11 +40,11 @@
     ,   { "indices": [20,13]    , "color": "{{frame_color}}" }
     ,   { "indices": [19,14]    , "color": "{{frame_color}}" }
     ,   { "indices": [2,6]      , "color": "{{frame_color}}" }
-    ,   { "indices": [7,10]     , "color": "{{frame_color}}" }
-    ,   { "indices": [8,9]      , "color": "{{frame_color}}" }
-    ,   { "indices": [11,12]    , "color": "{{frame_color}}" }
-    ,   { "indices": [7,8]      , "color": "{{frame_color}}" }
-    ,   { "indices": [9,10]     , "color": "{{frame_color}}" }
+    ,   { "indices": [7,10]     , "color": "{{saddle_color}}" }
+    ,   { "indices": [8,9]      , "color": "{{saddle_color}}" }
+    ,   { "indices": [11,12]    , "color": "{{saddle_color}}" }
+    ,   { "indices": [7,8]      , "color": "{{saddle_color}}" }
+    ,   { "indices": [9,10]     , "color": "{{saddle_color}}" }
     ]
 ,   "wheel_point_data":
     [
@@ -125,8 +125,8 @@
     ,   { "indices": [13,10]    , "color": "{{handlebar_color}}" }
     ,   { "indices": [10,12]    , "color": "{{handlebar_color}}" }
     ,   { "indices": [9,11]     , "color": "{{handlebar_color}}" }
-    ,   { "indices": [11,4]     , "color": "{{handlebar_color}}" }
-    ,   { "indices": [12,3]     , "color": "{{handlebar_color}}" }
+    ,   { "indices": [11,4]     , "color": "{{grip_color}}" }
+    ,   { "indices": [12,3]     , "color": "{{grip_color}}" }
     ,   { "indices": [1,12]     , "color": "{{handlebar_color}}" }
     ,   { "indices": [1,11]     , "color": "{{handlebar_color}}" }
     ]
