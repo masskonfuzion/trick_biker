@@ -2,9 +2,11 @@ from pymkfgame.core.message_queue import MessageQueue
 from pymkfgame.display_msg.display_msg import DisplayMessage
 from pymkfgame.display_msg.display_msg_manager import DisplayMessageManager
 from pymkfgame.core.game_state_base import GameStateBase
-from pymkfgame.mkfmath.common import DEGTORAD, coss, sinn
+from pymkfgame.mkfmath.common import DEGTORAD, RADTODEG, coss, sinn
 from pymkfgame.mkfmath.vector import *
+from pymkfgame.mkfmath.matrix import *
 from pymkfgame.mkfmath.refframe import *
+from pymkfgame.collision.dist_and_xsect import *
 import random
 
 from bike2_core import *
@@ -360,7 +362,7 @@ class GameStateImpl(GameStateBase):
             self.levelMgr.currentLevel = 1
             self.substate = PlayingSubstate.startlevel
 
-        if self.substate == PlayingSubstate.startlevel:
+        elif self.substate == PlayingSubstate.startlevel:
             # TODO break playingsubstates into their own functions, maybe
             # Initialize bike
             self.bike.Init()    # TODO move this out of update()? I'm not sure I like having it here # TODO evaluate -- do we need to totally reinit here (Init() loads the model from disk.. Might be overkill)
@@ -924,19 +926,131 @@ class GameStateImpl(GameStateBase):
         ex = self.levelMgr.ramps[n].x + self.levelMgr.ramps[n].length * coss(360 - self.levelMgr.ramps[n].incline)
         ey = self.levelMgr.ramps[n].y + self.levelMgr.ramps[n].length * sinn(360 - self.levelMgr.ramps[n].incline)
     
-        if self.bike.model.collisionGeom._maxPt[0] > sx: # remember, _maxPts is a tuple, with no .x, .y, or .z attributes
+        #if self.bike.model.collisionGeom._maxPt[0] >= sx: # remember, _maxPts is a tuple, with no .x, .y, or .z attributes
+        #    #import pdb; pdb.set_trace()
+        #    y = ey - 18 # TODO: Fix. Don't hardcode bike's y-position when jumping. Use collision detection, or otherwise math formulas to determine the bike's position on the ramp
+    
+        #    self.bike.model.thz = self.levelMgr.ramps[n].incline # set the top-level rotation angle (which will be processed when we need to know where points are, for drawing/colliding)
+    
+        #    self.bike._velocity[1] = self.bike.rider.jump * (self.bike._velocity[0] * sinn(self.bike.model.thz))    #1.5707 # TODO do better math than this. You came up with these numbers just through trial and error.. what looked good
+        #    self.bike._velocity[0] = self.bike._velocity[0] * coss(self.bike.model.thz)
+        #    self.bike.inAir = True
+
+        ## TODO (12/13/16) - Update all this... The wheels should have Spheres as their bounding volume, rather than AABBs (the bike, as a whole can still have AABBs; but the wheels themselves should have spheres)
+        ## TODO (12/13/16 cont) - The ramps should be Plane colliders. Do intersection of Plane with Sphere to find where wheel hits (or... perhaps the wheels should be cylinder colliders..)
+
+        #ramp_incline_vec = Vector(coss(360 - self.levelMgr.ramps[n].incline), sinn(360 - self.levelMgr.ramps[n].incline), 0)    # TODO maybe store this vector in the ramp? We actually compute it once when creating the ramp planes
+        print "====="
+        print "Ramp entrance (plane origin): sx,sy:{} plane.p: {}".format(Vector(sx, sy, 0), self.levelMgr.collisionGeoms[n].p)
+        print "Ramp plane normal: {}".format(self.levelMgr.collisionGeoms[n].n)
+        ramp_incline_vec = Vector(coss(self.levelMgr.ramps[n].incline), sinn(self.levelMgr.ramps[n].incline), 0)    # TODO maybe store this vector in the ramp? We actually compute it once when creating the ramp planes
+        print "Ramp incline: {}".format(ramp_incline_vec)
+
+
+        # Test front wheel collision with ramp (NOTE here, we're trying to get the bike to roll up the ramp.. Currently not working, blah)
+        #front_wheel_on_ramp = self.bike.model.children['handlebar'].children['wheel'].collisionGeom._minPt[0] >= sx and self.bike.model.children['handlebar'].children['wheel'].collisionGeom._maxPt[0] <= ex
+        #rear_wheel_on_ramp = self.bike.model.children['frame'].children['wheel'].collisionGeom._minPt[0] >= sx and self.bike.model.children['frame'].children['wheel'].collisionGeom._maxPt[0] <= ex
+
+        front_collgeom_ctr = Vector( (self.bike.model.children['handlebar'].children['wheel'].collisionGeom._minPt[0] + self.bike.model.children['handlebar'].children['wheel'].collisionGeom._maxPt[0]) / 2.0
+                                   , (self.bike.model.children['handlebar'].children['wheel'].collisionGeom._minPt[1] + self.bike.model.children['handlebar'].children['wheel'].collisionGeom._maxPt[1]) / 2.0
+                                   , 0.0 )
+        print "Front wheel collgeom center: {}".format(front_collgeom_ctr)
+
+        # TODO - make sure the closest point calculation actually returns a point on the plane
+        closest_pt_on_ramp_to_front_wheel_ctr = closestPoint_Point_Plane(front_collgeom_ctr, self.levelMgr.collisionGeoms[n])
+        print "Closest pt on ramp to front wheel: {}".format(closest_pt_on_ramp_to_front_wheel_ctr)
+
+        vec_from_closest_pt_on_ramp_to_front_wheel = vSub(front_collgeom_ctr, closest_pt_on_ramp_to_front_wheel_ctr)
+        vec_from_ramp_entrance_to_front_wheel = vSub(front_collgeom_ctr, Vector(sx, sy, 0))
+        sqdist_ramp_to_front_wheel = vDot(vec_from_closest_pt_on_ramp_to_front_wheel, vec_from_closest_pt_on_ramp_to_front_wheel)
+        print "Vec from closest pt on ramp to front wheel: {}".format(vec_from_closest_pt_on_ramp_to_front_wheel)
+        print "Vec from ramp entarnce to front wheel: {}".format(vec_from_ramp_entrance_to_front_wheel)
+        print "Sq dist front wheel to ramp: {}".format(sqdist_ramp_to_front_wheel)
+        
+        #vec_from_plane_origin_to_closest_pt_to_front_wheel = vSub(closest_pt_on_ramp_to_front_wheel_ctr, self.levelMgr.collisionGeoms[n].p) # Plane origin = a corner (i.e. not the center of the plane). if plane p + Su + Tv (where S and T are parameters, and u and v are the orthonormal basis vectors, then S and T are always >= 0.0
+        #print "Vec from plane origin to closest pt to front wheel: {}".format(vec_from_plane_origin_to_closest_pt_to_front_wheel)
+
+        # TODO revamp your plane analysis. This test is detecting false positives when: the front wheel has not yet reached the ramp, but it is closer than 1 wheel radius. The new test needs to consider the plane in the form p + Su + Tv, where p is the origin pt, u and v are basis vectors, and S and T are constants. For the wheel to be on the plane, the position of the wheel on the plane will need to be such that S and T both are > 0
+        ramp_forward_vec = vCross(self.levelMgr.collisionGeoms[n].n, Vector(0,0,1))    # Get the ramp's incline vector #TODO revisit.. We may already have this vector... or otherwise, get rid of, if not needed
+        ground_vec = Vector(1,0,0)  # The "ground" is really just the x axis
+        wheel_radius = self.bike.wheelAngVel['handlebar'].radius    # NOTE: We're assuming that front wheel and rear wheel have same radius. Don't make this statement false
+        if vDot(vec_from_ramp_entrance_to_front_wheel, ground_vec) > 0.0 and (sqdist_ramp_to_front_wheel < wheel_radius * wheel_radius):    # TODO: make all of this significantly less janky
+        #if sqdist_ramp_to_front_wheel < self.bike.wheelAngVel['handlebar'].radius * self.bike.wheelAngVel['handlebar'].radius:     # TODO: make all of this significantly less janky
+            # If we're here, then the wheel is penetrating the ramp. We have a vector from the center of the wheel to the ramp, the length of which is less than the radius of the wheel.
+            # To get the correction vector (to push the wheel back to the surface of the ramp), we'll take a copy of the vector from the wheel to the ramp, and negate it. Then, we'll scale it to the radius.
+            # That will give us what we need to compute the correction vector
             #import pdb; pdb.set_trace()
-            #self.bike.model.thz = 360 - self.levelMgr.ramps[n].incline # set the top-level rotation angle (which will be processed when we need to know where points are, for drawing/colliding)
-    
-            #self.bike._velocity[1] = self.bike.rider.jump * (self.bike._velocity[0] * sinn(self.bike.model.thz)) + 2.25    #1.5707 # TODO do better math than this. You came up with these numbers just through trial and error.. what looked good
-            #self.bike._velocity[0] = self.bike._velocity[0] * coss(self.bike.model.thz)
-            y = ey - 18 # TODO: Fix. Don't hardcode bike's y-position when jumping. Use collision detection, or otherwise math formulas to determine the bike's position on the ramp
-    
-            self.bike.model.thz = self.levelMgr.ramps[n].incline # set the top-level rotation angle (which will be processed when we need to know where points are, for drawing/colliding)
-    
-            self.bike._velocity[1] = self.bike.rider.jump * (self.bike._velocity[0] * sinn(self.bike.model.thz))    #1.5707 # TODO do better math than this. You came up with these numbers just through trial and error.. what looked good
-            self.bike._velocity[0] = self.bike._velocity[0] * coss(self.bike.model.thz)
-            self.bike.inAir = True
+            print "Front wheel is on ramp"
+            penetration_distance = wheel_radius - vLength(vec_from_closest_pt_on_ramp_to_front_wheel)
+            correction_vec = vGetScaled(self.levelMgr.collisionGeoms[n].n, penetration_distance)
+            print "Front wheel penetration correction vec: {}".format(correction_vec)
+
+            # Compute a new position for the tire (once we know where the tire should go, we can figure out how to rotate/inverse kinematize the bike to hit that target)
+            new_front_wheel_pos = vAdd( front_collgeom_ctr, correction_vec )
+        else:
+            new_front_wheel_pos = front_collgeom_ctr
+
+        print "Corrected front wheel collision geom center: {}".format(new_front_wheel_pos)
+        print
+
+
+        rear_collgeom_ctr = Vector( (self.bike.model.children['frame'].children['wheel'].collisionGeom._minPt[0] + self.bike.model.children['frame'].children['wheel'].collisionGeom._maxPt[0]) / 2.0
+                                  , (self.bike.model.children['frame'].children['wheel'].collisionGeom._minPt[1] + self.bike.model.children['frame'].children['wheel'].collisionGeom._maxPt[1]) / 2.0
+                                  , 0.0 )
+        print "Rear wheel collgeom center: {}".format(rear_collgeom_ctr)
+
+        # TODO - make sure the closest point calculation actually returns a point on the plane
+        # TODO - Each ramp actually should have 2 planes: 1 for the launch ramp, and 1 for the landing ramp
+        closest_pt_on_ramp_to_rear_wheel_ctr = closestPoint_Point_Plane(rear_collgeom_ctr, self.levelMgr.collisionGeoms[n])
+
+        vec_from_closest_pt_on_ramp_to_rear_wheel = vSub(rear_collgeom_ctr, closest_pt_on_ramp_to_rear_wheel_ctr)
+        vec_from_ramp_entrance_to_rear_wheel = vSub(Vector(sx, sy, 0), rear_collgeom_ctr)
+        sqdist_ramp_to_rear_wheel = vDot(vec_from_closest_pt_on_ramp_to_rear_wheel, vec_from_closest_pt_on_ramp_to_rear_wheel)
+        print "Vec from closest pt on ramp to rear wheel: {}".format(vec_from_closest_pt_on_ramp_to_rear_wheel)
+        print "Vec from ramp entarnce to rear wheel: {}".format(vec_from_ramp_entrance_to_rear_wheel)
+        print "Sq dist rear wheel to ramp: {}".format(sqdist_ramp_to_rear_wheel)
+
+        #vec_from_plane_origin_to_closest_pt_to_rear_wheel = vSub(closest_pt_on_ramp_to_rear_wheel_ctr, self.levelMgr.collisionGeoms[n].p)
+        #print "Vec from plane origin to closest pt to rear wheel: {}".format(vec_from_plane_origin_to_closest_pt_to_rear_wheel)
+
+        if vDot(vec_from_ramp_entrance_to_rear_wheel, ground_vec) > 0.0 and (sqdist_ramp_to_rear_wheel < wheel_radius * wheel_radius):  # TODO: make all of this significantly less janky
+            # If we're here, then the wheel is penetrating the ramp. We have a vector from the center of the wheel to the ramp, the length of which is less than the radius of the wheel.
+            # To get the correction vector (to push the wheel back to the surface of the ramp), we'll take a copy of the vector from the wheel to the ramp, and negate it. Then, we'll scale it to the radius.
+            # That will give us what we need to compute the correction vector
+            #import pdb; pdb.set_trace()
+            print "Rear wheel is on ramp"
+            penetration_distance = wheel_radius - vLength(vec_from_closest_pt_on_ramp_to_rear_wheel)
+            correction_vec = vGetScaled(self.levelMgr.collisionGeoms[n].n, penetration_distance)
+
+            # Compute a new position for the tire (once we know where the tire should go, we can figure out how to rotate/inverse kinematize the bike to hit that target)
+            new_rear_wheel_pos = vAdd( rear_collgeom_ctr, correction_vec )
+        else:
+            new_rear_wheel_pos = rear_collgeom_ctr
+
+        print "Corrected rear wheel collision geom center: {}".format(new_rear_wheel_pos)
+        print
+
+        # TODO also make sure this collision detection stuff works on the down ramps
+
+
+        # Now, compute the bike's new orientation angle, based on its newly-calculated wheel positions
+        # we can compute the angle by comparing the vector pointing from rear wheel to front wheel, to the ground axis (i.e. the +x axis, in this game)
+        bike_line = vGetNormalized( vSub(new_front_wheel_pos, new_rear_wheel_pos) )
+        print "Bike line (vec from rear wheel ctr to front wheel ctr: {}".format(bike_line)
+        thz = math.atan2(bike_line[1], bike_line[0]) * RADTODEG     # You could also use acos of bike_line[0].. atam2 is more useful when the angle can be 0 - 360 deg
+        print "New bike z angle (in degrees): {}".format(thz)
+        print
+        self.bike.model.thz = thz
+
+        # Adjust the bike's velocity vector
+        vel_magnitude = vLength(self.bike._velocity)
+        new_velocity = vGetScaled(bike_line, vel_magnitude)
+
+        self.bike._velocity = new_velocity
+
+
+            
+
 
 
     #==============================================================================

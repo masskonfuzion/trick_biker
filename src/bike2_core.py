@@ -9,7 +9,7 @@ import math
 from pymkfgame.mkfmath import matrix
 from pymkfgame.mkfmath import vector
 from pymkfgame.mkfmath.common import DEGTORAD, coss, sinn, EPSILON, floatEq
-from pymkfgame.collision import aabb
+from pymkfgame.collision import aabb, plane
 from pymkfgame.gameobj.gameobj import GameObj
 
 #==============================================================================
@@ -875,6 +875,7 @@ class LevelManager(object):
         self.y_ground = 0
 
         self.ramps = []
+        self.collisionGeoms = []
         self.scoreToBeat = 0
 
         # TODO probably add some functions to set currentLevel? Or otherwise manipulate directly from wherever..
@@ -910,7 +911,6 @@ class LevelManager(object):
         #Biker.xvel = 0
         #Biker.yvel = 0
     
-        # TODO - populate self.ramps here. Make Pythonic
         if self.currentLevel == 1:
             self.ramps.append( RampType(x=600,y=self.y_ground - 10, incline=45, length=45, dist=220) )
             self.ramps.append( RampType(x=1400, y=self.y_ground - 10, incline=33, length=60, dist=220) )
@@ -952,7 +952,22 @@ class LevelManager(object):
             self.ramps.append( RampType(x=600, y=self.y_ground - 10, incline=55, length=35, dist=220) )
             self.ramps.append( RampType(x=1200, y=self.y_ground - 10, incline=55, length=35, dist=220) )
             self.scoreToBeat = 1000
+            # TODO Figure out why we use y_ground - 10 here?? ^^^
     
+
+        # Set up ramp collision geometry
+        del self.collisionGeoms[:]
+        for ramp in self.ramps:
+            ramp_plane = plane.Plane()
+            #incline_vec = vector.Vector(coss(360 - ramp.incline), sinn(360 - ramp.incline), 0) # TODO delete? I'm not sure why I calculated 360 - ang..
+            incline_vec = vector.Vector(coss(ramp.incline), sinn(ramp.incline), 0)
+            ramp_plane.n = vector.vGetNormalized( vector.vCross(vector.Vector(0,0,1), incline_vec) ) # We know that the +z axis is one of the basis vectors for the ramp plane
+            ramp_plane.p = vector.Vector(ramp.x, self.y_ground - 10, 0)
+            self.collisionGeoms.append(ramp_plane)
+
+            print "Added collision plane with p = {}, n = {}".format(self.collisionGeoms[len(self.collisionGeoms) - 1].p, self.collisionGeoms[len(self.collisionGeoms) - 1].n)
+            
+
     def update(self, dt_s, bike):
         """ Update the level manager (e.g., things like curRamp and such)
 
