@@ -216,10 +216,10 @@ class Wireframe(object):
             #logging.debug("sPt:{} - {}, ePt:{} - {}".format(startPt, spCoords, endPt, epCoords))
             pygame.draw.line(render_surface, color, (spCoords[0], spCoords[1]), (epCoords[0], epCoords[1]) )
 
-        #if obj_ref.collisionGeom:
-        #    # TODO add a debug mode.. we don't ALWAYS want to draw the geom
-        #    obj_ref.collisionGeom.draw(render_surface, matView=matView, matViewport=matViewport)
-        #    pass
+        if obj_ref.collisionGeom:
+            # TODO add a debug mode.. we don't ALWAYS want to draw the geom
+            obj_ref.collisionGeom.draw(render_surface, matView=matView, matViewport=matViewport)
+            pass
 
     def loadModelTransform(self, matRot=matrix.Matrix.matIdent(), matTrans=matrix.Matrix.matIdent()):
         ''' Load/overwrite a transformation matrix for the object
@@ -316,6 +316,7 @@ class Bike(GameObj):
 
         self.crashed = False
         self.inAir = False
+        self.onRamp = False         # Yet another state tracking variable (note: these states are terrible hack-n-slash)
         self.tricking = False       # TODO make sure to keep tricking data type consistent. It's bool here, int elsewhere
         self.trickPhase = 1
         self.memAngle = 0
@@ -396,8 +397,8 @@ class Bike(GameObj):
             dimension_max = max(dimension_max, point[0])
 
         #import pdb; pdb.set_trace()
-        self.wheelAngVel['handlebar'].radius = (dimension_max - dimension_min)# / 2.0    # NOTE that this radius need not be accurate - it's used only to compute the wheels' behavior
-        self.wheelAngVel['frame'].radius = (dimension_max - dimension_min)# / 2.0
+        self.wheelAngVel['handlebar'].radius = (dimension_max - dimension_min) / 2.0    # NOTE that this radius need not be accurate - it's used only to compute the wheels' behavior
+        self.wheelAngVel['frame'].radius = (dimension_max - dimension_min) / 2.0
 
         # TODO: remove duplicate inits. We have these vars in the constructor for reference; they should be managed outside the constructor
         self.crashed = False
@@ -458,25 +459,29 @@ class Bike(GameObj):
         self._position[1] += self._velocity[1] * dt_s
         self.model.position = Point3D(self._position[0], self._position[1], self._position[2])
 
-        self._velocity[0] += self._acceleration[0] * dt_s
+        self._velocity[0] += self._acceleration[0] * dt_s   # TODO tweak the acceleration vector if the bike is on a ramp
         self._velocity[1] += self._acceleration[1] * dt_s
 
         # Load identity matrices for the wheel rotations.
         self.model.children['handlebar'].children['wheel'].loadModelTransform() # identity is the default for both rot and trans
         # Compute wheel angular velocity from linear velocity (note that linear velocity is already time-scaled, so we don't have to also time-scale the angular velocities
         if self.model.children['handlebar'].children['wheel'].collisionGeom._minPt[1] <= self.levelMgrRef.y_ground:
+            print "Doing angular velocity for front wheel"
             self.wheelAngVel['handlebar'].setAngVelFromLinearVel(self._velocity[0] * dt_s)  # Set angular velocity
         else:
             self.wheelAngVel['handlebar'].doFriction()
+            print "Doing friction for front wheel"
         self.wheelAngVel['handlebar'].updateAngle()                             # Update angle based on angular velocity
         wheelRotMat = matrix.Matrix.matRotZ( self.wheelAngVel['handlebar'].angle )
         self.model.children['handlebar'].children['wheel'].composeModelTransform(matRot=wheelRotMat)
 
         self.model.children['frame'].children['wheel'].loadModelTransform() # identity is the default for both rot and trans
         if self.model.children['frame'].children['wheel'].collisionGeom._minPt[1] <= self.levelMgrRef.y_ground:
+            print "Doing angular velocity for rear wheel"
             self.wheelAngVel['frame'].setAngVelFromLinearVel(self._velocity[0] * dt_s)  # Set angular velocity
         else:
             self.wheelAngVel['frame'].doFriction()
+            print "Doing friction for rear wheel"
         self.wheelAngVel['frame'].updateAngle()                             # Update angle based on angular velocity
         wheelRotMat = matrix.Matrix.matRotZ( self.wheelAngVel['frame'].angle )
         self.model.children['frame'].children['wheel'].composeModelTransform(matRot=wheelRotMat)
@@ -872,7 +877,7 @@ class LevelManager(object):
         self.curRamp = 0
         self.trackHalfWidth = 25.0   # Track width is 2 * this number
 
-        self.y_ground = 0
+        self.y_ground = -30
 
         self.ramps = []
         self.collisionGeoms = []
@@ -899,73 +904,60 @@ class LevelManager(object):
         MsgFrames = 0       	    # Used in messaging (how many frames to leave the message up for)
         msg = ""           		    # Used in messaging - the message text itself
     
-    
-        # TODO take in a bike obj and set the bike's _position (and the bike model's position, which are separate values)
-        # TODO - x, y, and z are candidates for deletion
-        x = 120                     # Bike _position on screen (TODO: Decide. LevelManager probably shouldn't be responsible for this? Or, maybe it should, in which case, InitLevel needs a reference to the bike)
-        y = self.y_ground - 20 - 10
-        z = -60        			    #z offset: keep this around -50 or -60
-    
-        # TODO make sure variable scoping is correct. You went through a pass of simply converting loose variables into object-oriented objects/members/etc
-        #bike.reset()   # TODO maybe take in a reference to the bike as a param?
-        #Biker.xvel = 0
-        #Biker.yvel = 0
-    
         if self.currentLevel == 1:
-            self.ramps.append( RampType(x=600,y=self.y_ground - 10, incline=45, length=45, dist=220) )
-            self.ramps.append( RampType(x=1400, y=self.y_ground - 10, incline=33, length=60, dist=220) )
-            self.ramps.append( RampType(x=2200, y=self.y_ground - 10, incline=50, length=30, dist=220) )
+            self.ramps.append( RampType(x=600,y=self.y_ground, incline=45, length=45, dist=220) )
+            self.ramps.append( RampType(x=1400, y=self.y_ground, incline=33, length=60, dist=220) )
+            self.ramps.append( RampType(x=2200, y=self.y_ground, incline=50, length=30, dist=220) )
             self.scoreToBeat = 1000     #Score to beat for level 1
     
         elif self.currentLevel == 2:
-            self.ramps.append( RampType(x=500, y=self.y_ground - 10, incline=30, length=45, dist=200) )
-            self.ramps.append( RampType(x=1300, y=self.y_ground - 10, incline=40, length=45, dist=250) )
-            self.ramps.append( RampType(x=2100, y=self.y_ground - 10, incline=40, length=40, dist=170) )
-            self.ramps.append( RampType(x=2900, y=self.y_ground - 10, incline=30, length=45, dist=220) )
-            self.ramps.append( RampType(x=3700, y=self.y_ground - 10, incline=40, length=40, dist=150) )
+            self.ramps.append( RampType(x=500, y=self.y_ground, incline=30, length=45, dist=200) )
+            self.ramps.append( RampType(x=1300, y=self.y_ground, incline=40, length=45, dist=250) )
+            self.ramps.append( RampType(x=2100, y=self.y_ground, incline=40, length=40, dist=170) )
+            self.ramps.append( RampType(x=2900, y=self.y_ground, incline=30, length=45, dist=220) )
+            self.ramps.append( RampType(x=3700, y=self.y_ground, incline=40, length=40, dist=150) )
             self.scoreToBeat = 1350     #Score to beat for level 2
     
         elif self.currentLevel == 3:
-            self.ramps.append( RampType(x=540, y=self.y_ground - 10, incline=25, length=35, dist=170) )
-            self.ramps.append( RampType(x=1080, y=self.y_ground - 10, incline=35, length=35, dist=170) )
-            self.ramps.append( RampType(x=1620, y=self.y_ground - 10, incline=45, length=35, dist=190) )
-            self.ramps.append( RampType(x=2160, y=self.y_ground - 10, incline=50, length=35, dist=210) )
+            self.ramps.append( RampType(x=540, y=self.y_ground, incline=25, length=35, dist=170) )
+            self.ramps.append( RampType(x=1080, y=self.y_ground, incline=35, length=35, dist=170) )
+            self.ramps.append( RampType(x=1620, y=self.y_ground, incline=45, length=35, dist=190) )
+            self.ramps.append( RampType(x=2160, y=self.y_ground, incline=50, length=35, dist=210) )
             self.scoreToBeat = 1250
     
         elif self.currentLevel == 4:
-            self.ramps.append( RampType(x=600, y=self.y_ground - 10, incline=45, length=35, dist=200) )
-            self.ramps.append( RampType(x=1200, y=self.y_ground - 10, incline=45, length=35, dist=200) )
-            self.ramps.append( RampType(x=1800, y=self.y_ground - 10, incline=45, length=35, dist=200) )
-            self.ramps.append( RampType(x=2400, y=self.y_ground - 10, incline=35, length=35, dist=200) )
+            self.ramps.append( RampType(x=600, y=self.y_ground, incline=45, length=35, dist=200) )
+            self.ramps.append( RampType(x=1200, y=self.y_ground, incline=45, length=35, dist=200) )
+            self.ramps.append( RampType(x=1800, y=self.y_ground, incline=45, length=35, dist=200) )
+            self.ramps.append( RampType(x=2400, y=self.y_ground, incline=35, length=35, dist=200) )
             self.scoreToBeat = 1500
     
         elif self.currentLevel == 5:
-            self.ramps.append( RampType(x=600, y=self.y_ground - 10, incline=35, length=35, dist=200) )
-            self.ramps.append( RampType(x=1200, y=self.y_ground - 10, incline=40, length=35, dist=200) )
-            self.ramps.append( RampType(x=1800, y=self.y_ground - 10, incline=35, length=35, dist=200) )
-            self.ramps.append( RampType(x=2400, y=self.y_ground - 10, incline=40, length=35, dist=200) )
-            self.ramps.append( RampType(x=3000, y=self.y_ground - 10, incline=35, length=35, dist=200) )
-            self.ramps.append( RampType(x=3600, y=self.y_ground - 10, incline=35, length=35, dist=200) )
+            self.ramps.append( RampType(x=600, y=self.y_ground, incline=35, length=35, dist=200) )
+            self.ramps.append( RampType(x=1200, y=self.y_ground, incline=40, length=35, dist=200) )
+            self.ramps.append( RampType(x=1800, y=self.y_ground, incline=35, length=35, dist=200) )
+            self.ramps.append( RampType(x=2400, y=self.y_ground, incline=40, length=35, dist=200) )
+            self.ramps.append( RampType(x=3000, y=self.y_ground, incline=35, length=35, dist=200) )
+            self.ramps.append( RampType(x=3600, y=self.y_ground, incline=35, length=35, dist=200) )
             self.scoreToBeat = 1900
     
         elif self.currentLevel == 6:
-            self.ramps.append( RampType(x=600, y=self.y_ground - 10, incline=55, length=35, dist=220) )
-            self.ramps.append( RampType(x=1200, y=self.y_ground - 10, incline=55, length=35, dist=220) )
+            self.ramps.append( RampType(x=600, y=self.y_ground, incline=55, length=35, dist=220) )
+            self.ramps.append( RampType(x=1200, y=self.y_ground, incline=55, length=35, dist=220) )
             self.scoreToBeat = 1000
-            # TODO Figure out why we use y_ground - 10 here?? ^^^
     
 
         # Set up ramp collision geometry
+        # TODO each ramp needs a collisionGeom for both takeoff and landing
         del self.collisionGeoms[:]
         for ramp in self.ramps:
-            ramp_plane = plane.Plane()
-            #incline_vec = vector.Vector(coss(360 - ramp.incline), sinn(360 - ramp.incline), 0) # TODO delete? I'm not sure why I calculated 360 - ang..
+            ramp_launch_plane = plane.Plane()
             incline_vec = vector.Vector(coss(ramp.incline), sinn(ramp.incline), 0)
-            ramp_plane.n = vector.vGetNormalized( vector.vCross(vector.Vector(0,0,1), incline_vec) ) # We know that the +z axis is one of the basis vectors for the ramp plane
-            ramp_plane.p = vector.Vector(ramp.x, self.y_ground - 10, 0)
-            self.collisionGeoms.append(ramp_plane)
+            ramp_launch_plane.n = vector.vGetNormalized( vector.vCross(vector.Vector(0,0,1), incline_vec) ) # We know that the +z axis is one of the basis vectors for the ramp plane
+            ramp_launch_plane.p = vector.Vector(ramp.x, self.y_ground, 0)
+            self.collisionGeoms.append( {'launch': ramp_launch_plane, 'land': None} )
 
-            print "Added collision plane with p = {}, n = {}".format(self.collisionGeoms[len(self.collisionGeoms) - 1].p, self.collisionGeoms[len(self.collisionGeoms) - 1].n)
+            print "Added collision plane with p = {}, n = {}".format(self.collisionGeoms[len(self.collisionGeoms) - 1]['launch'].p, self.collisionGeoms[len(self.collisionGeoms) - 1]['launch'].n)
             
 
     def update(self, dt_s, bike):
