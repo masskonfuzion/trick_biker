@@ -8,7 +8,7 @@ import logging
 import math
 from pymkfgame.mkfmath import matrix
 from pymkfgame.mkfmath import vector
-from pymkfgame.mkfmath.common import DEGTORAD, coss, sinn, EPSILON, floatEq
+from pymkfgame.mkfmath.common import DEGTORAD, coss, sinn, EPSILON, floatEq, floatLte
 from pymkfgame.collision import aabb, plane
 from pymkfgame.gameobj.gameobj import GameObj
 
@@ -34,7 +34,8 @@ class AngularVelocity(object):
         # The angle swept by a point on the circle is ratio of the distance traveled to the radius of the
         # circle (I think.. I'm doing this in my head.. I could look it up, but... what fun would that be?
         # This function also is a super-simplified calculation; the output is in RADIANS
-        self.angVel =  -linearVel / self.radius
+        #self.angVel =  -linearVel / self.radius                # is this wrong? This spins too fast for my liking
+        self.angVel =  -linearVel / (math.pi * self.radius)     # More visually satisfying, but is this the correct formula? (does it matter?)
         #print "angVel:{}, ang_z:{}".format(self.angVel, self.angle)
 
     def updateAngle(self):
@@ -216,10 +217,10 @@ class Wireframe(object):
             #logging.debug("sPt:{} - {}, ePt:{} - {}".format(startPt, spCoords, endPt, epCoords))
             pygame.draw.line(render_surface, color, (spCoords[0], spCoords[1]), (epCoords[0], epCoords[1]) )
 
-        if obj_ref.collisionGeom:
-            # TODO add a debug mode.. we don't ALWAYS want to draw the geom
-            obj_ref.collisionGeom.draw(render_surface, matView=matView, matViewport=matViewport)
-            pass
+        ##if obj_ref.collisionGeom:
+        ##    # TODO add a debug mode.. we don't ALWAYS want to draw the geom
+        ##    obj_ref.collisionGeom.draw(render_surface, matView=matView, matViewport=matViewport)
+        ##    pass
 
     def loadModelTransform(self, matRot=matrix.Matrix.matIdent(), matTrans=matrix.Matrix.matIdent()):
         ''' Load/overwrite a transformation matrix for the object
@@ -465,7 +466,8 @@ class Bike(GameObj):
         # Load identity matrices for the wheel rotations.
         self.model.children['handlebar'].children['wheel'].loadModelTransform() # identity is the default for both rot and trans
         # Compute wheel angular velocity from linear velocity (note that linear velocity is already time-scaled, so we don't have to also time-scale the angular velocities
-        if self.model.children['handlebar'].children['wheel'].collisionGeom._minPt[1] <= self.levelMgrRef.y_ground:
+        floatErrorTolerance = 0.1
+        if floatLte(self.model.children['handlebar'].children['wheel'].collisionGeom._minPt[1], self.levelMgrRef.y_ground, floatErrorTolerance):
             print "Doing angular velocity for front wheel"
             self.wheelAngVel['handlebar'].setAngVelFromLinearVel(self._velocity[0] * dt_s)  # Set angular velocity
         else:
@@ -476,7 +478,7 @@ class Bike(GameObj):
         self.model.children['handlebar'].children['wheel'].composeModelTransform(matRot=wheelRotMat)
 
         self.model.children['frame'].children['wheel'].loadModelTransform() # identity is the default for both rot and trans
-        if self.model.children['frame'].children['wheel'].collisionGeom._minPt[1] <= self.levelMgrRef.y_ground:
+        if floatLte(self.model.children['frame'].children['wheel'].collisionGeom._minPt[1], self.levelMgrRef.y_ground, floatErrorTolerance):
             print "Doing angular velocity for rear wheel"
             self.wheelAngVel['frame'].setAngVelFromLinearVel(self._velocity[0] * dt_s)  # Set angular velocity
         else:

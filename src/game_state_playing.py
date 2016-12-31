@@ -369,9 +369,10 @@ class GameStateImpl(GameStateBase):
             #import pdb; pdb.set_trace()
             #bike_y_pos_offset = (self.bike.model.children['frame'].children['wheel'].collisionGeom._maxPt[1] - self.bike.model.children['frame'].children['wheel'].collisionGeom._minPt[1]) / 2.0
             bike_y_pos_offset = 10 # hard-coded - 5 for bike wheel radius, + 5 more because wheel is situated at y = -5
+            bike_y_floor = self.levelMgr.y_ground + bike_y_pos_offset
 
-            self.bike._position = Vector(320, self.levelMgr.y_ground + bike_y_pos_offset, 0, 1)        # TODO make a function that synchronizes bike _position with bike model position
-            self.bike.model.position = Point3D(320, self.levelMgr.y_ground + bike_y_pos_offset, 0)             # NOTE: +15 to offset model offset an wheel radius
+            self.bike._position = Vector(320, bike_y_floor, 0, 1)        # TODO make a function that synchronizes bike _position with bike model position
+            self.bike.model.position = Point3D(320, bike_y_floor, 0)             # NOTE: +15 to offset model offset an wheel radius
             self.bike._velocity = Vector(0,0,0)
             self.bike._acceleration = Vector(0,0,0)
 
@@ -418,8 +419,9 @@ class GameStateImpl(GameStateBase):
                     # If you're here, you've landed
                     #bike_y_pos_offset = (self.bike.model.children['frame'].children['wheel'].collisionGeom._maxPt[0] - self.bike.model.children['frame'].children['wheel'].collisionGeom._minPt[0]) / 2.0
                     bike_y_pos_offset = 10 # hard-coded - 5 for bike wheel radius, + 5 more because wheel is situated at y = -5
-                    self.bike._position[1] = self.levelMgr.y_ground + bike_y_pos_offset
-                    self.bike.model.position[1] = self.levelMgr.y_ground + bike_y_pos_offset
+                    bike_y_floor = math.floor(self.levelMgr.y_ground + bike_y_pos_offset)
+                    self.bike._position[1] = bike_y_floor
+                    self.bike.model.position[1] = bike_y_floor
                     #self.bike._position[1] = self.levelMgr.y_ground
                     #self.bike.model.position[1] = self.levelMgr.y_ground
                     self.bike._velocity[1] = 0.0
@@ -460,8 +462,7 @@ class GameStateImpl(GameStateBase):
                         self.staticMsg['presskey'].changeText("Press <Enter> to continue.")
                         self.bike.crashed = True
                         self.substate = PlayingSubstate.crashed
-                        #self.bike._position[1] = self.levelMgr.y_ground - 15
-                        self.bike._position[1] = self.levelMgr.y_ground + bike_y_pos_offset
+                        self.bike._position[1] = bike_y_floor
             
                         if (self.bike.model.children['frame'].thy + 180) % 360 >= 270 and (self.bike.model.children['frame'].thy + 180) % 360 <= 90 :
                             self.bike.model.children['handlebar'].thz = 180
@@ -532,8 +533,9 @@ class GameStateImpl(GameStateBase):
                 else:
                     # TODO store bike_y_pos_offset as a member of bike, or some class. It's scattered all over the place, being redefined as needed
                     bike_y_pos_offset = 10 # hard-coded - 5 for bike wheel radius, + 5 more because wheel is situated at y = -5
-                    self.bike._position[1] = self.levelMgr.y_ground + bike_y_pos_offset
-                    self.bike.model.position[1] = self.levelMgr.y_ground + bike_y_pos_offset
+                    bike_y_floor = math.floor(self.levelMgr.y_ground + bike_y_pos_offset)
+                    self.bike._position[1] = bike_y_floor
+                    self.bike.model.position[1] = bike_y_floor
 
         elif self.substate == PlayingSubstate.crashed:
             # If we crashed, then wait here for user input, then go back to startLevel
@@ -932,18 +934,10 @@ class GameStateImpl(GameStateBase):
     #SUB checkRamp ()
     #Rudimentary collision detection -- test whether the bike has hit a ramp
     #==============================================================================
-    #TODO replace with collision detection and trigonometry
     def checkRamp(self, n):
-        # TODO pick up from here -- fix the CheckRamp function to be Python-compliant.
         if self.bike.inAir:
             return
     
-        # TODO List of Ramp objects should belong to the Level object (also TODO: make a Level object :-D)
-        #sx = self.levelMgr.ramps[n].x
-        #sy = self.levelMgr.ramps[n].y
-        #ex = self.levelMgr.ramps[n].x + self.levelMgr.ramps[n].length * coss(self.levelMgr.ramps[n].incline)
-        #ey = self.levelMgr.ramps[n].y + self.levelMgr.ramps[n].length * sinn(self.levelMgr.ramps[n].incline)
-
         ex = self.levelMgr.collisionGeoms[n]['launch'].p[0] + self.levelMgr.ramps[n].length * coss(self.levelMgr.ramps[n].incline)
         ey = self.levelMgr.collisionGeoms[n]['launch'].p[1] + self.levelMgr.ramps[n].length * sinn(self.levelMgr.ramps[n].incline)
 
@@ -985,10 +979,6 @@ class GameStateImpl(GameStateBase):
         print "Vec from closest pt on ramp to front wheel: {}".format(vec_from_closest_pt_on_ramp_to_front_wheel)
         print "Sq dist front wheel to ramp: {}".format(sqdist_ramp_to_front_wheel)
         
-        #vec_from_plane_origin_to_closest_pt_to_front_wheel = vSub(closest_pt_on_ramp_to_front_wheel_ctr, self.levelMgr.collisionGeoms[n].p) # Plane origin = a corner (i.e. not the center of the plane). if plane p + Su + Tv (where S and T are parameters, and u and v are the orthonormal basis vectors, then S and T are always >= 0.0
-        #print "Vec from plane origin to closest pt to front wheel: {}".format(vec_from_plane_origin_to_closest_pt_to_front_wheel)
-
-        # TODO revamp your plane analysis. This test is detecting false positives when: the front wheel has not yet reached the ramp, but it is closer than 1 wheel radius. The new test needs to consider the plane in the form p + Su + Tv, where p is the origin pt, u and v are basis vectors, and S and T are constants. For the wheel to be on the plane, the position of the wheel on the plane will need to be such that S and T both are > 0
         ground_vec = Vector(1,0,0)  # The "ground" is really just the x axis
         wheel_radius = self.bike.wheelAngVel['handlebar'].radius    # NOTE: We're assuming that front wheel and rear wheel have same radius. Don't make this statement false
         
@@ -1006,11 +996,6 @@ class GameStateImpl(GameStateBase):
             print "Front wheel is on ramp"
             if self.bike.onRamp == False:
                 self.bike.onRamp = True
-            # TODO properly calculate penetration distance; it is not guaranteed to be radius - len(vec_from_closest_pt_on_ramp_to_front_wheel) - probably need to calculate min & max distance along plane normal vector; take the max 
-            ##penetration_distance = wheel_radius - vLength(vec_from_closest_pt_on_ramp_to_front_wheel)
-            ##correction_vec = vGetScaled(self.levelMgr.collisionGeoms[n]['launch'].n, penetration_distance)        # TODO clean up. collisionGeom.n is the same vector as launch_seg_n. Remove redundancies
-            ##print "Front wheel penetration correction vec: {}".format(correction_vec)
-
 
             bDotN = vDot(front_wheel_query_vec, vec_from_closest_pt_on_ramp_to_front_wheel)
             if bDotN < 0.0:
@@ -1024,7 +1009,6 @@ class GameStateImpl(GameStateBase):
                 penetration_distance = vLength( vSub(front_wheel_query_pt, closest_pt_on_ramp_to_front_wheel_ctr) ) 
             correction_vec = vGetScaled(self.levelMgr.collisionGeoms[n]['launch'].n, penetration_distance)        # TODO clean up. collisionGeom.n is the same vector as launch_seg_n. Remove redundancies
             print "Front wheel penetration correction vec: {}".format(correction_vec)
-                    
 
             # Compute a new position for the tire (once we know where the tire should go, we can figure out how to rotate/inverse kinematize the bike to hit that target)
             new_front_wheel_pos = vAdd( front_collgeom_ctr, correction_vec )
@@ -1055,16 +1039,11 @@ class GameStateImpl(GameStateBase):
         print "Vec from closest pt on ramp to rear wheel: {}".format(vec_from_closest_pt_on_ramp_to_rear_wheel)
         print "Sq dist rear wheel to ramp: {}".format(sqdist_ramp_to_rear_wheel)
 
-        ###vec_from_plane_origin_to_closest_pt_to_rear_wheel = vSub(closest_pt_on_ramp_to_rear_wheel_ctr, self.levelMgr.collisionGeoms[n].p)
-        ###print "Vec from plane origin to closest pt to rear wheel: {}".format(vec_from_plane_origin_to_closest_pt_to_rear_wheel)
-
         rear_wheel_query_pt = vSub( rear_collgeom_ctr, vGetScaled(self.levelMgr.collisionGeoms[n]['launch'].n, wheel_radius) )
         rear_wheel_query_vec = vSub( rear_wheel_query_pt, rear_collgeom_ctr )
         print "rear_wheel_query_pt: {}, rear_wheel_query_vec: {}".format(rear_wheel_query_pt, rear_wheel_query_vec)
 
         # TODO cache the dot product here, to save the redundant call
-        ##if sqdist_ramp_to_rear_wheel < wheel_radius * wheel_radius:     # TODO: make all of this significantly less janky
-
         if vDot( vSub(rear_collgeom_ctr, self.levelMgr.collisionGeoms[n]['launch'].p), Vector(1,0,0) ) > 0.0 and rear_wheel_query_pt[0] - self.levelMgr.collisionGeoms[n]['launch'].p[0] <= ramp_length_along_ground:  # TODO test for point on plane; currently does not bound far side of ramp
             #import pdb; pdb.set_trace()
             print "Rear wheel is on ramp"
@@ -1073,10 +1052,6 @@ class GameStateImpl(GameStateBase):
         ##    # If we're here, then the wheel is penetrating the ramp. We have a vector from the center of the wheel to the ramp, the length of which is less than the radius of the wheel.
         ##    # To get the correction vector (to push the wheel back to the surface of the ramp), we'll take a copy of the vector from the wheel to the ramp, and negate it. Then, we'll scale it to the radius.
         ##    # That will give us what we need to compute the correction vector
-        ##    #import pdb; pdb.set_trace()
-        ##    penetration_distance = wheel_radius - vLength(vec_from_closest_pt_on_ramp_to_rear_wheel)
-        ##    correction_vec = vGetScaled(self.levelMgr.collisionGeoms[n]['launch'].n, penetration_distance)
-
 
             bDotN = vDot(rear_wheel_query_vec, vec_from_closest_pt_on_ramp_to_rear_wheel)
             if bDotN < 0.0:
@@ -1090,7 +1065,6 @@ class GameStateImpl(GameStateBase):
                 penetration_distance = vLength( vSub(rear_wheel_query_pt, closest_pt_on_ramp_to_rear_wheel_ctr) ) 
             correction_vec = vGetScaled(self.levelMgr.collisionGeoms[n]['launch'].n, penetration_distance)        # TODO clean up. collisionGeom.n is the same vector as launch_seg_n. Remove redundancies
             print "rear wheel penetration correction vec: {}".format(correction_vec)
-                    
 
             # Compute a new position for the tire (once we know where the tire should go, we can figure out how to rotate/inverse kinematize the bike to hit that target)
             new_rear_wheel_pos = vAdd( rear_collgeom_ctr, correction_vec )
@@ -1108,12 +1082,10 @@ class GameStateImpl(GameStateBase):
         bike_line = vGetNormalized( vSub(new_front_wheel_pos, new_rear_wheel_pos) )
         print "Bike line (vec from rear wheel ctr to front wheel ctr: {}".format(bike_line)
         thz = math.atan2(bike_line[1], bike_line[0]) * RADTODEG     # You could also use acos of bike_line[0].. atam2 is more useful when the angle can be 0 - 360 deg
-        #thz = math.acos(bike_line[0]) * RADTODEG
         print "New bike z angle (in degrees): {}".format(thz)
         print
         self.bike.model.thz = thz
 
-        # TODO adjust the bike's center pos, based on contact with the ramp
         print "Bike position: {}".format(self.bike._position)
         print "Bike model position: {}".format(self.bike.model.position)
         print "Known front wheel position (when zrot==0: (0, -5, 0)"
@@ -1138,13 +1110,9 @@ class GameStateImpl(GameStateBase):
         print
         self.bike._velocity = Vector(new_velocity[0], new_velocity[1], new_velocity[2])
 
-        if rear_collgeom_ctr[0] - ex > wheel_radius:
+        if rear_wheel_query_pt[0] - ex > wheel_radius:
             self.bike.inAir = True
             self.bike.onRamp = False
-
-
-            
-
 
 
     #==============================================================================
