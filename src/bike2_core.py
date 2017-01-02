@@ -35,7 +35,7 @@ class AngularVelocity(object):
         # circle (I think.. I'm doing this in my head.. I could look it up, but... what fun would that be?
         # This function also is a super-simplified calculation; the output is in RADIANS
         #self.angVel =  -linearVel / self.radius                # is this wrong? This spins too fast for my liking
-        self.angVel =  -linearVel / (math.pi * self.radius)     # More visually satisfying, but is this the correct formula? (does it matter?)
+        self.angVel =  -linearVel / (2.0 * math.pi * self.radius)     # More visually satisfying, but is this the correct formula? (does it matter?)
         #print "angVel:{}, ang_z:{}".format(self.angVel, self.angle)
 
     def updateAngle(self):
@@ -317,7 +317,7 @@ class Bike(GameObj):
 
         self.crashed = False
         self.inAir = False
-        self.onRamp = False         # Yet another state tracking variable (note: these states are terrible hack-n-slash)
+        self.onRamp = {'front': False, 'rear': False}   # Yet another state tracking variable (note: these states are terrible hack-n-slash)
         self.tricking = False       # TODO make sure to keep tricking data type consistent. It's bool here, int elsewhere
         self.trickPhase = 1
         self.memAngle = 0
@@ -467,7 +467,8 @@ class Bike(GameObj):
         self.model.children['handlebar'].children['wheel'].loadModelTransform() # identity is the default for both rot and trans
         # Compute wheel angular velocity from linear velocity (note that linear velocity is already time-scaled, so we don't have to also time-scale the angular velocities
         floatErrorTolerance = 0.1
-        if floatLte(self.model.children['handlebar'].children['wheel'].collisionGeom._minPt[1], self.levelMgrRef.y_ground, floatErrorTolerance):
+        if floatLte(self.model.children['handlebar'].children['wheel'].collisionGeom._minPt[1], self.levelMgrRef.y_ground, floatErrorTolerance) \
+           or self.onRamp['front']:
             print "Doing angular velocity for front wheel"
             self.wheelAngVel['handlebar'].setAngVelFromLinearVel(self._velocity[0] * dt_s)  # Set angular velocity
         else:
@@ -478,7 +479,8 @@ class Bike(GameObj):
         self.model.children['handlebar'].children['wheel'].composeModelTransform(matRot=wheelRotMat)
 
         self.model.children['frame'].children['wheel'].loadModelTransform() # identity is the default for both rot and trans
-        if floatLte(self.model.children['frame'].children['wheel'].collisionGeom._minPt[1], self.levelMgrRef.y_ground, floatErrorTolerance):
+        if floatLte(self.model.children['frame'].children['wheel'].collisionGeom._minPt[1], self.levelMgrRef.y_ground, floatErrorTolerance) \
+           or self.onRamp['rear']:
             print "Doing angular velocity for rear wheel"
             self.wheelAngVel['frame'].setAngVelFromLinearVel(self._velocity[0] * dt_s)  # Set angular velocity
         else:

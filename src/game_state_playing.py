@@ -378,8 +378,8 @@ class GameStateImpl(GameStateBase):
 
             self.bike.rider.maxspd = 130.0  # TODO don't hardcode biker abilities
             self.bike.rider.pump = 12.0     # TODO don't hardcode biker abilities
-            self.bike.rider.jump = 3.0      # TODO don't hardcode biker abilities
-            self.bike.rider.turn = 270.0    # degrees per second # TODO don't hardcode biker abilities
+            self.bike.rider.jump = 150.0      # TODO don't hardcode biker abilities
+            self.bike.rider.turn = 300.0    # degrees per second # TODO don't hardcode biker abilities
 
             ## TODO Do something useful with frames of reference. The stuff you're doing with it right now is for testing purposes and will probably be replaced. Also, refFrame isn't defined in state.Init(). It's defined here
             self.refFrame.setUpVector(0,-1,0)
@@ -417,7 +417,6 @@ class GameStateImpl(GameStateBase):
 
                 if self.bike._velocity[1] < 0 and self.bike.model.collisionGeom._minPt[1] <= self.levelMgr.y_ground:  # TODO make sure that biker's yvel is 0 when on the ground; otherwise this test will trigger false positives
                     # If you're here, you've landed
-                    #bike_y_pos_offset = (self.bike.model.children['frame'].children['wheel'].collisionGeom._maxPt[0] - self.bike.model.children['frame'].children['wheel'].collisionGeom._minPt[0]) / 2.0
                     bike_y_pos_offset = 10 # hard-coded - 5 for bike wheel radius, + 5 more because wheel is situated at y = -5
                     bike_y_floor = math.floor(self.levelMgr.y_ground + bike_y_pos_offset)
                     self.bike._position[1] = bike_y_floor
@@ -526,16 +525,17 @@ class GameStateImpl(GameStateBase):
                     #WHILE INKEY$ <> CHR$(13): WEND
             
             else:
-                if self.bike.onRamp:
+                if all(self.bike.onRamp.values()):  # this statement is equivalent to saying: "if all values in onRamp are True"
                     # NOTE we pass here because the bike-is-on-ramp case is handled in checkRamp
                     # Also note: Holy Lord, this is such bad style...
                     pass
                 else:
-                    # TODO store bike_y_pos_offset as a member of bike, or some class. It's scattered all over the place, being redefined as needed
-                    bike_y_pos_offset = 10 # hard-coded - 5 for bike wheel radius, + 5 more because wheel is situated at y = -5
-                    bike_y_floor = math.floor(self.levelMgr.y_ground + bike_y_pos_offset)
-                    self.bike._position[1] = bike_y_floor
-                    self.bike.model.position[1] = bike_y_floor
+                    ### TODO store bike_y_pos_offset as a member of bike, or some class. It's scattered all over the place, being redefined as needed
+                    ##bike_y_pos_offset = 10 # hard-coded - 5 for bike wheel radius, + 5 more because wheel is situated at y = -5
+                    ##bike_y_floor = math.floor(self.levelMgr.y_ground + bike_y_pos_offset)
+                    ##self.bike._position[1] = bike_y_floor
+                    ##self.bike.model.position[1] = bike_y_floor
+                    pass
 
         elif self.substate == PlayingSubstate.crashed:
             # If we crashed, then wait here for user input, then go back to startLevel
@@ -795,6 +795,16 @@ class GameStateImpl(GameStateBase):
                     if self.bike._velocity[0] >= self.bike.rider.maxspd:
                         self.bike._velocity[0] = self.bike.rider.maxspd
 
+            elif self.bike.onRamp['rear'] and not self.bike.inAir:
+                # TODO verify that the jump/pop happens only on the launch ramp
+                if event.key == pygame.K_SPACE:
+                    self.bike.inAir = True
+                    for key in self.bike.onRamp:
+                        self.bike.onRamp[key] = False
+                    self.bike._velocity[1] += self.bike.rider.jump
+                    print "Jump!"
+
+
             elif self.bike.inAir and not self.bike.tricking:
                 if event.key == pygame.K_j:
                     if self.kbStateMgr.trickModifier:
@@ -937,6 +947,8 @@ class GameStateImpl(GameStateBase):
     def checkRamp(self, n):
         if self.bike.inAir:
             return
+
+        # TODO check both launch and land ramps.  Do it based on bike's distance to ramp
     
         ex = self.levelMgr.collisionGeoms[n]['launch'].p[0] + self.levelMgr.ramps[n].length * coss(self.levelMgr.ramps[n].incline)
         ey = self.levelMgr.collisionGeoms[n]['launch'].p[1] + self.levelMgr.ramps[n].length * sinn(self.levelMgr.ramps[n].incline)
@@ -987,15 +999,16 @@ class GameStateImpl(GameStateBase):
         print "front_wheel_query_pt: {}, front_wheel_query_vec: {}".format(front_wheel_query_pt, front_wheel_query_vec)
 
         # TODO cache the dot product here, to save the redundant call
-        if vDot( vSub(front_collgeom_ctr, self.levelMgr.collisionGeoms[n]['launch'].p), Vector(1,0,0) ) > 0.0 and front_wheel_query_pt[0] - self.levelMgr.collisionGeoms[n]['launch'].p[0] <= ramp_length_along_ground:  # TODO test for point on plane; currently does not bound far side of ramp
-                                                                        # TODO add extent check
+        if vDot( vSub(front_collgeom_ctr, self.levelMgr.collisionGeoms[n]['launch'].p), Vector(1,0,0) ) > 0.0 \
+           and front_wheel_query_pt[0] - self.levelMgr.collisionGeoms[n]['launch'].p[0] <= ramp_length_along_ground \
+           and sqdist_ramp_to_front_wheel < wheel_radius * wheel_radius:
             # If we're here, then the wheel is penetrating the ramp. We have a vector from the center of the wheel to the ramp, the length of which is less than the radius of the wheel.
             # To get the correction vector (to push the wheel back to the surface of the ramp), we'll take a copy of the vector from the wheel to the ramp, and negate it. Then, we'll scale it to the radius.
             # That will give us what we need to compute the correction vector
             #import pdb; pdb.set_trace()
             print "Front wheel is on ramp"
-            if self.bike.onRamp == False:
-                self.bike.onRamp = True
+            if self.bike.onRamp['front'] == False:
+                self.bike.onRamp['front'] = True
 
             bDotN = vDot(front_wheel_query_vec, vec_from_closest_pt_on_ramp_to_front_wheel)
             if bDotN < 0.0:
@@ -1044,11 +1057,13 @@ class GameStateImpl(GameStateBase):
         print "rear_wheel_query_pt: {}, rear_wheel_query_vec: {}".format(rear_wheel_query_pt, rear_wheel_query_vec)
 
         # TODO cache the dot product here, to save the redundant call
-        if vDot( vSub(rear_collgeom_ctr, self.levelMgr.collisionGeoms[n]['launch'].p), Vector(1,0,0) ) > 0.0 and rear_wheel_query_pt[0] - self.levelMgr.collisionGeoms[n]['launch'].p[0] <= ramp_length_along_ground:  # TODO test for point on plane; currently does not bound far side of ramp
+        if vDot( vSub(rear_collgeom_ctr, self.levelMgr.collisionGeoms[n]['launch'].p), Vector(1,0,0) ) > 0.0 \
+           and rear_wheel_query_pt[0] - self.levelMgr.collisionGeoms[n]['launch'].p[0] <= ramp_length_along_ground \
+           and sqdist_ramp_to_rear_wheel < wheel_radius * wheel_radius:
             #import pdb; pdb.set_trace()
             print "Rear wheel is on ramp"
-        ##  if self.bike.onRamp == False:   # NOTE we don't check the rear wheel for on-ramp state (at least, not for launch ramps)
-        ##      self.bike.onRamp = True
+            if self.bike.onRamp['rear'] == False:
+                self.bike.onRamp['rear'] = True
         ##    # If we're here, then the wheel is penetrating the ramp. We have a vector from the center of the wheel to the ramp, the length of which is less than the radius of the wheel.
         ##    # To get the correction vector (to push the wheel back to the surface of the ramp), we'll take a copy of the vector from the wheel to the ramp, and negate it. Then, we'll scale it to the radius.
         ##    # That will give us what we need to compute the correction vector
@@ -1105,14 +1120,24 @@ class GameStateImpl(GameStateBase):
         # Adjust the bike's velocity vector
         print "Current velocity: {}".format(self.bike._velocity)
         vel_magnitude = vLength(self.bike._velocity)
-        new_velocity = vGetScaled(bike_line, vel_magnitude)
+        if all(self.bike.onRamp.values()):  # NOTE that "==" for the Vector class already considers floating point error
+                                        # TODO probably generalize names to remove "launch/land", for when we start testing both launch and landing
+            print "Computing new velocity based on ramp angle"
+            new_velocity = vGetScaled(bike_line, vel_magnitude)
+        else:
+            print "Maintaining velocity"
+            new_velocity = self.bike._velocity
         print "New velocity: {}".format(new_velocity)
         print
+        ##new_velocity = vGetScaled(bike_line, vel_magnitude)
         self.bike._velocity = Vector(new_velocity[0], new_velocity[1], new_velocity[2])
 
+
         if rear_wheel_query_pt[0] - ex > wheel_radius:
-            self.bike.inAir = True
-            self.bike.onRamp = False
+            self.bike.inAir = True      # TODO -- you're only inAir if you're leaving a launch ramp
+
+            for k in self.bike.onRamp:
+                self.bike.onRamp[k] = False
 
 
     #==============================================================================
