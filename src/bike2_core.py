@@ -19,7 +19,7 @@ class AngularVelocity(object):
         This is a total hack. In the game, it only considers angular velocity caused by
         the bike moving along the X-Z plane. In a bigger, better game, we would use rigid body physics.
     '''
-    def __init__(self, friction=0.01):
+    def __init__(self, friction=0.008):
         self.angVel = 0.0
         self.angle = 0.0
         self.friction = friction    # A damping factor to slow the wheel's rotation down when it's free-rolling (i.e. not touching the ground)
