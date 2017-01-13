@@ -76,7 +76,6 @@ class GameplayStats(object):
         # End-of-level summary
         self.runReport = []
         self.reset()
-        # TODO make sure to use your resetXYZ helper functions when starting/restarting levels
 
         # Possibly used for debugging
         self.drawPoints = False
@@ -92,7 +91,6 @@ class GameplayStats(object):
         self.activeTrick = 0        # Note: to be consistent the QBASIC version, we'll make activeTrick go from 1 - whatever # of tricks we want. 0 means no active trick
         self.trickMsg = ""          # Message to display while tricking (e.g. prints out the trick combo as you're performing it)
 
-        # TODO perhaps also add other stuff into this function, e.g. addScore, numTricks, trickCounter, etc
         if self.timesUsed:  # if list exists already, zero it out
             for i in range(0, self.trickArraySize):
                 self.timesUsed[i] = 0
@@ -233,16 +231,15 @@ class GameStateImpl(GameStateBase):
         return GameStateImpl.__instance
 
     def Init(self, appRef, takeWith=None):
-        self.gamestats = GameplayStats()  # TODO make sure variable scoping and/or function parameters are straight
+        self.gamestats = GameplayStats()
 
         self.substate = PlayingSubstate()
-        #self.substate = PlayingSubstate.startlevel  # TODO decide if you prefer to have an object with constructor/methods/etc
         self.substate = PlayingSubstate.uninitialized
         self.appRef = appRef
         self.kbStateMgr = KeyboardStateManager()
 
         self.levelMgr = LevelManager()
-        self.mm = DisplayMessageManager()   # TODO - maybe make names more descriptive? DisplayMessageManager is for (and only for) event-based messages that will appear for some amount of time, then disappear
+        self.mm = DisplayMessageManager()   # TODO - maybe make class names more descriptive? DisplayMessageManager is for (and only for) event-based messages that will appear for some amount of time, then disappear
 
         self.staticMsg = {}            # a dict to store static DisplayMessage objects ("static" means they appear indefinitely as opposed to DisplayMessageManager messages, which expire after some time)
         self.InitializeStaticMessages()
@@ -253,11 +250,11 @@ class GameStateImpl(GameStateBase):
         self._eventQueue.Initialize(64)
 
         # Register Event Listeners
-        #self._eventQueue.RegisterListener('ball', self.ball.controlState, 'PlayerControl') # Change this to be self.bike
+        #self._eventQueue.RegisterListener('ball', self.ball.controlState, 'PlayerControl')     # TODO Change this to be self.bike
         #self._eventQueue.RegisterListener('mixer', self.mixer, 'PlaySfx')
         self._eventQueue.RegisterListener('engine', self.appRef, 'Application') # Register the game engine to listen to messages with topic, "Application"
 
-        self.bike = Bike()   # TODO make sure variable scoping and/or function parameters are straight
+        self.bike = Bike()
         self.bike.gamestatsRef = self.gamestats # give the bike a reference to gamestats
         self.bike.mmRef = self.mm               # give the bike a reference to the message manager
         self.bike.levelMgrRef = self.levelMgr   # give the bike a reference to the level manager
@@ -277,7 +274,7 @@ class GameStateImpl(GameStateBase):
 
     def InitializeStaticMessages(self):
         # TODO/NOTE: the position list could just as easily be a tuple (might even lead to better performance?)
-        # TODO speaking of positions, we'll definitely need to tweak the positioning of these messages, and possibly (probably) allow dynamic positioning
+        # TODO speaking of positions, we'll definitely need to tweak the positioning of these messages on-screen, and possibly (probably) allow dynamic positioning
         self.staticMsg['score'] = DisplayMessage()
         self.staticMsg['score'].create(txtStr="Score: ", position=[80, 10], color=(192, 64, 64))
         self.staticMsg['score'].alive = True
@@ -344,18 +341,10 @@ class GameStateImpl(GameStateBase):
                         fn_ptr(self, **argsDict)
                     else:
                         fn_ptr(self)
-
-                #elif msg['payload']['action'] == 'notify':
-                #    # The "notify" action merely notifies the listener that an action happened, but does not
-                #    # call for a specific action to be taken
-
-
             msg = self._eventQueue.Dequeue()
 
     def Update(self, dt_s):
-        # TODO put in fixed timestep updating. We want to update every cycle, but only draw when it's time to
-        # TODO note: there are probably things that should ALWAYS happen in the Update function, no matter the substate (e.g. message manager updates?
-        self.mm.update(dt_s)    # TODO possibly also pass in a reference to the gameplay stats object? (that's how we did it Falldown)
+        self.mm.update(dt_s)
 
         if self.substate == PlayingSubstate.uninitialized:
             # This state represents the very beginning of the game; one-time startup stuff. 
@@ -365,67 +354,56 @@ class GameStateImpl(GameStateBase):
         elif self.substate == PlayingSubstate.startlevel:
             # TODO break playingsubstates into their own functions, maybe
             # Initialize bike
-            self.bike.Init()    # TODO move this out of update()? I'm not sure I like having it here # TODO evaluate -- do we need to totally reinit here (Init() loads the model from disk.. Might be overkill)
-            #import pdb; pdb.set_trace()
-            #bike_y_pos_offset = (self.bike.model.children['frame'].children['wheel'].collisionGeom._maxPt[1] - self.bike.model.children['frame'].children['wheel'].collisionGeom._minPt[1]) / 2.0
+            self.bike.Init()    # TODO move this out of update()? I'm not sure I like having it here
+                                # TODO evaluate -- do we need to totally reinit here (Init() loads the model from disk.. Might be overkill)
             bike_y_pos_offset = 10 # hard-coded - 5 for bike wheel radius, + 5 more because wheel is situated at y = -5
             bike_y_floor = self.levelMgr.y_ground + bike_y_pos_offset
 
-            self.bike._position = Vector(320, bike_y_floor, 0, 1)        # TODO make a function that synchronizes bike _position with bike model position
-            self.bike.model.position = Point3D(320, bike_y_floor, 0)             # NOTE: +15 to offset model offset an wheel radius
+            self.bike._position = Vector(320, bike_y_floor, 0, 1)       # TODO make a function that synchronizes bike _position with bike model position
+            self.bike.model.position = Point3D(320, bike_y_floor, 0)
             self.bike._velocity = Vector(0,0,0)
             self.bike._acceleration = Vector(0,0,0)
 
-            self.bike.rider.maxspd = 130.0  # TODO don't hardcode biker abilities
-            self.bike.rider.pump = 12.0     # TODO don't hardcode biker abilities
-            self.bike.rider.jump = 150.0      # TODO don't hardcode biker abilities
-            self.bike.rider.turn = 300.0    # degrees per second # TODO don't hardcode biker abilities
+            self.bike.rider.maxspd = 130.0                          # TODO don't hardcode biker abilities
+            self.bike.rider.pump = 12.0                             # TODO don't hardcode biker abilities
+            self.bike.rider.jump = 150.0                            # TODO don't hardcode biker abilities
+            self.bike.rider.turn = 300.0    # degrees per second    # TODO don't hardcode biker abilities
 
             ## TODO Do something useful with frames of reference. The stuff you're doing with it right now is for testing purposes and will probably be replaced. Also, refFrame isn't defined in state.Init(). It's defined here
             self.refFrame.setUpVector(0,-1,0)
             self.refFrame.setLookVector(0,0,-1)
             self.refFrame.setPosition(-320, 0, 0)   # TODO figure out positioning. I believe the reference frame should be positioned at origin (0,0,0)
 
-            ##self.refFrame.setPosition(350, self.levelMgr.y_ground + 30, -50)
-            ##look = Vector(self.bike._position[0] - self.refFrame.position[0], self.bike._position[1] - self.refFrame.position[1], self.bike._position[2] - self.refFrame.position[2])
-            ##self.refFrame.setLookVector(look[0], look[1], look[2])
-            #vNormalize(self.refFrame.look)
-            #import pdb; pdb.set_trace()
             self.bike.model.updateModelTransform()
-            # TODO make viewport matrix, as well. Viewport happens after projection, so the main point is to compute vertices to fit in a desired viewport/window within the screen
 
             # Display level start message
             self.levelMgr.levelPassed = False
             self.levelMgr.InitLevel()
-            self.mm.setMessage("Level {}!".format(self.levelMgr.currentLevel), [ 400, 200 ], (192, 64, 64), 2 )  # TODO un-hardcode the render position of the message. But otherwise, use this as a template to replace other message and doMessage calls
+            self.mm.setMessage("Level {}!".format(self.levelMgr.currentLevel), [ 400, 200 ], (192, 64, 64), 2 )  # TODO un-hardcode the render position of the message.
             self.gamestats.reset()
 
             # Clear info & presskey messages
             self.staticMsg['info'].alive = False
             self.staticMsg['presskey'].alive = False
 
-            self.substate = PlayingSubstate.playing # TODO maybe put a couple of seconds' delay before substate change, or maybe require a keypress
+            self.substate = PlayingSubstate.playing
         elif self.substate == PlayingSubstate.playing:
-            ## TODO note/correct - there is some redundancy between the RiderType class and the Bike class. e.g., RiderType has xvel, and Bike have velocity Vector (which has an x component)
-    
+            ## TODO correct redundancies - there is some redundancy between the RiderType class and the Bike class. e.g., RiderType has xvel, and Bike have velocity Vector (which has an x component)
             self.bike.update(dt_s)
             self.refFrame.setPosition(-self.bike._position[0], 0, 0) # Move the camera (follow the bike) (note the negative sign..)
-            self.checkRamp(self.levelMgr.curRamp)    # TODO possibly move the checkRamp call into the playing substate?
+            self.checkRamp(self.levelMgr.curRamp)
 
             if self.bike.inAir:
                 # This is rudimentary "collision detection" (more like a boundary test) for determining when the bike lands (self.levelMgr.y_ground is ground level)
 
-                if self.bike._velocity[1] < 0 and self.bike.model.collisionGeom._minPt[1] <= self.levelMgr.y_ground:  # TODO make sure that biker's yvel is 0 when on the ground; otherwise this test will trigger false positives
+                if self.bike._velocity[1] < 0 and self.bike.model.collisionGeom._minPt[1] <= self.levelMgr.y_ground:
                     # If you're here, you've landed
                     bike_y_pos_offset = 10 # hard-coded - 5 for bike wheel radius, + 5 more because wheel is situated at y = -5
                     bike_y_floor = math.floor(self.levelMgr.y_ground + bike_y_pos_offset)
                     self.bike._position[1] = bike_y_floor
                     self.bike.model.position[1] = bike_y_floor
-                    #self.bike._position[1] = self.levelMgr.y_ground
-                    #self.bike.model.position[1] = self.levelMgr.y_ground
                     self.bike._velocity[1] = 0.0
 
-                    # TODO after doing rough-cut aabb test, do more precise testing.. somehow. Maybe an intersection test of the wireframe with the ground?
                     # TODO Maybe store ramp geometry in the level object; you're recalculating coordinates that you calculated in order to be able to draw the level. Add collision detection
                     ramp_length = self.levelMgr.ramps[self.levelMgr.curRamp].length * coss(self.levelMgr.ramps[self.levelMgr.curRamp].incline)
                     ramp_height = self.levelMgr.ramps[self.levelMgr.curRamp].length * sinn(self.levelMgr.ramps[self.levelMgr.curRamp].incline)
@@ -443,10 +421,9 @@ class GameStateImpl(GameStateBase):
                     land_sx = land_ex + ramp_length
                     land_sy = self.levelMgr.ramps[self.levelMgr.curRamp].y
 
-                    # TODO modify this -- use collision detection
+                    # TODO Maybe modify this -- use collision detection
                     DidNotClearRamp = self.bike.model.collisionGeom._minPt[0] < land_ex    # You didn't clear the jump if you land before the lip of the landing ramp # TODO make the landing calculation more robust. Should be able to land on the ramp
             
-                    #import pdb; pdb.set_trace()
                     if self.bike.tricking or DidNotClearRamp:
                         msg = ""
                         if self.bike.tricking :
@@ -474,11 +451,6 @@ class GameStateImpl(GameStateBase):
                         self.bike.model.children['frame'].thx = 70
                         self.bike.model.children['handlebar'].thx = 70
             
-                        # TODO why did I do thy + 180? Also... Why did I hardcode thx's to 70, above?? Look at the original source
-                        # Ohhh I think this is where we draw the bike in a crashed state
-                        #CALL RotateBike(self.bike.model.children['frame'].thx, self.bike.model.children['frame'].thy + 180, self.bike.model.children['frame'].thz)
-                        #CALL RotateBar(self.bike.model.children['handlebar'].thx, self.bike.model.children['handlebar'].thy + 180, self.bike.model.children['handlebar'].thz)
-
                         # We compose rotation matrices in ZYX order, so they're applied in XYZ order
                         # Note: There has to be a better way to access vars and functions.. These lines of code are super long...
                         self.bike.model.children['handlebar'].matRot = matrix.mMultmat( matrix.Matrix.matRotZ(self.bike.model.children['handlebar'].thz), matrix.Matrix.matRotY(self.bike.model.children['handlebar'].thy)  )
@@ -493,69 +465,40 @@ class GameStateImpl(GameStateBase):
                         # Note: the following stuff is what happens once a trick is landed. Perhaps put into a helper function
                         self.bike.inAir = False
 
-                        #import pdb; pdb.set_trace()
                         self.gamestats.score += self.gamestats.addScore
                         self.gamestats.addScore = 0 # Reset addscore on a successful landing; it tallies the point total of all tricks performed in a combo, and resets when the trick/combo is landed
                         self.gamestats.numTricks = 0
                         self.bike.model.thz = 0                         # Set the parent transformation to 0 deg about Z
-                        self.bike.model.children['frame'].thz = 0       # TODO: evaluate: is it necessary to also set child transforms after the parent transform? Probably yes
+                        self.bike.model.children['frame'].thz = 0
                         self.bike.model.children['handlebar'].thz = 0
-                        one = 15        #Tab stops
-                        self.levelMgr.curRamp += 1   # TODO manage curRamp better. Maybe take a BSP-type approach? i.e, look at all ramps, but only process a ramp is the bike's x pos < ramp's x pos
+                        self.levelMgr.curRamp += 0   # TODO manage curRamp better. Maybe take a distance-based (broad-phase) / space partitioning approach?
 
                 if self.levelMgr.curRamp == len(self.levelMgr.ramps):  # You've finished the level
-                    #import pdb; pdb.set_trace()
-                    # TODO Make the end-of-level work without the crashing the program
                     self.staticMsg['presskey'].alive = True
                     self.staticMsg['presskey'].changeText("Press <Enter> to continue.")
             
                     self.substate = PlayingSubstate.finishlevel
                     if self.gamestats.score >= self.levelMgr.scoreToBeat:
-                        #import pdb; pdb.set_trace()
-                        self.levelMgr.levelPassed = True  # TODO evaluate whether this flag is necessary. If we need to stay in the level state for a while, then keep it. But if it makes more sense to increment the level counter here, and go to a new substate, then do that
-                        # TODO as always, look at what function is being called here
+                        self.levelMgr.levelPassed = True
                         self.staticMsg['info'].alive = True
                         self.staticMsg['info'].changeText(getBeatLevelMsg(self.gamestats.successPhrases))
-                        # TODO add level increment here - level += 1; initlevel; etc
             
                     else:
                         self.staticMsg['info'].alive = True
                         self.staticMsg['info'].changeText(getLostLevelMsg(self.gamestats.failurePhrases))
-                    # TODO wait for keypress here? Should there be substates for all these little things, like a substate for game-finished-at-first, and then for game-still-finished-show-run-summary, etc?
-                    #WHILE INKEY$ <> CHR$(13): WEND
-            
-            else:
-                if all(self.bike.onRamp.values()):  # this statement is equivalent to saying: "if all values in onRamp are True"
-                    # NOTE we pass here because the bike-is-on-ramp case is handled in checkRamp
-                    # Also note: Holy Lord, this is such bad style...
-                    pass
-                else:
-                    ### TODO store bike_y_pos_offset as a member of bike, or some class. It's scattered all over the place, being redefined as needed
-                    ##bike_y_pos_offset = 10 # hard-coded - 5 for bike wheel radius, + 5 more because wheel is situated at y = -5
-                    ##bike_y_floor = math.floor(self.levelMgr.y_ground + bike_y_pos_offset)
-                    ##self.bike._position[1] = bike_y_floor
-                    ##self.bike.model.position[1] = bike_y_floor
-                    pass
 
         elif self.substate == PlayingSubstate.crashed:
             # If we crashed, then wait here for user input, then go back to startLevel
-
-            #self.bike.Init()    # TODO evaluate -- do we need to totally reinit here (Init() loads the model from disk.. Might be overkill)
-            #self.levelMgr.InitLevel(self.levelMgr.currentLevel)    # TODO replace with level manager
-
             if self.kbStateMgr.menuActionKeyPressed:
                 self.mm.clear()
                 self._eventQueue.Clear()
-                self._eventQueue.Initialize(64) # TOOD perhaps don't hardcode the # of events that can be handled by this queue
+                self._eventQueue.Initialize(64)
 
                 self.bike.model.resetModelTransform()
     
-                #self.substate = PlayingSubstate.resetlevel     # TODO remove? Probably don't need PlayingSubstate.resetlevel
                 self.substate = PlayingSubstate.startlevel
-                # TODO perhaps wait for user input? (put that logic into ProcessEvents)
 
         elif self.substate == PlayingSubstate.finishlevel:
-            # TODO make sure the game switches into this substate
             if self.kbStateMgr.menuActionKeyPressed:
 
                 if self.levelMgr.levelPassed:
@@ -582,7 +525,6 @@ class GameStateImpl(GameStateBase):
                         # TODO improve the DisplayMessage interface & constructor to allow more flexibility / better access to data members
                         msgRef.create(txtStr=msg, position=[320, initialReportY + msgIndex * 12])
                         msgRef.alive = True # NOTE: No need to set ttl; these messages are static because we'll intentionally not update them.
-                        # TODO seriously, update the DisplayMessage class to allow for static messages -- ttl = -1 or something like that
                         msgIndex += 1
 
                     if self.levelMgr.currentLevel > self.levelMgr.finalLevel:
@@ -630,7 +572,7 @@ class GameStateImpl(GameStateBase):
 
     def RenderScene(self):
         # TODO put in fixed timestep updating / some time of timer class. We want to update every cycle, but only draw when it's time to. Something like: if timer.timeToDraw: draw it else: return
-        # TODO all objects should update their vertices based on view transforms here. Ideally, we should use a vertex buffer to combine all renderable vertices, and then apply the xform to the buffer.. But, we're not there yet
+        # TODO all objects should update their vertices based on view transforms here. Ideally, we should use a vertex buffer to combine all renderable vertices, and then apply the xform to the buffer.. And also do depth buffering. But, we're not there yet
         self.appRef.surface_bg.fill((0,0,0))
 
         # =====================================================================
@@ -726,7 +668,7 @@ class GameStateImpl(GameStateBase):
         bx = 50
 
         if self.bike.rider.maxspd == 0.0:
-            self.bike.rider.maxspd = 1.0 # TODO delete this hack; the purpose of it is to simply get the game up and running, before implementing character selection
+            self.bike.rider.maxspd = 1.0 # TODO delete this hack; the purpose of it is to simply get the game up and running, before implementing character selection. Ideally, we'll have all the biker's abilities set by the time we get here
         pygame.draw.rect(self.appRef.surface_bg, (255,255,255),  (bx - 1, by, l + 1, w)) 
         pygame.draw.rect(self.appRef.surface_bg, (0,255,0), (bx, by + 1, l * (self.bike._velocity[0] / self.bike.rider.maxspd), w - 1))
         
@@ -746,12 +688,10 @@ class GameStateImpl(GameStateBase):
         textSurfaceScoreToBeat = self.staticMsg['scoreToBeat'].getTextSurface(self.mm._font)
         self.appRef.surface_bg.blit(textSurfaceScoreToBeat, (self.staticMsg['scoreToBeat']._position[0], self.staticMsg['scoreToBeat']._position[1]))
 
-        #if self.staticMsg['info']._text:   # Render info message if it exists
         if self.staticMsg['info'].alive:
             textSurfaceInfo = self.staticMsg['info'].getTextSurface(self.mm._font)
             self.appRef.surface_bg.blit(textSurfaceInfo, (self.staticMsg['info']._position[0], self.staticMsg['info']._position[1]))
 
-        #if self.staticMsg['presskey']._text:   # Render info message if it exists
         if self.staticMsg['presskey'].alive:   # Render info message if it exists
             textSurfaceInfo = self.staticMsg['presskey'].getTextSurface(self.mm._font)
             self.appRef.surface_bg.blit(textSurfaceInfo, (self.staticMsg['presskey']._position[0], self.staticMsg['presskey']._position[1]))
@@ -779,7 +719,7 @@ class GameStateImpl(GameStateBase):
         #    gamestats.paused = 0
         #END IF
         
-        # TODO perhaps honor the escape key?
+        # TODO perhaps honor the escape key? - maybe include it as a key that brings up the pause menu?
         #CASE CHR$(27)
         #    Quit = True
         #    EXIT SUB
@@ -796,7 +736,7 @@ class GameStateImpl(GameStateBase):
                         self.bike._velocity[0] = self.bike.rider.maxspd
 
             elif self.bike.onRamp['rear'] and not self.bike.inAir:
-                # TODO verify that the jump/pop happens only on the launch ramp
+                # TODO verify that the jump/pop happens only on the launch ramp - use the state diagram you drew (and also photographed)
                 if event.key == pygame.K_SPACE:
                     self.bike.inAir = True
                     for key in self.bike.onRamp:
